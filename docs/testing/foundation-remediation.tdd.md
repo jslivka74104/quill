@@ -1,7 +1,7 @@
 # Foundation remediation TDD evidence
 
 Date: 2026-07-31
-Status: **Architecture GREEN; project-owner acceptance and pinned Swift CI pending**
+Status: **Architecture GREEN and project-owner accepted; pinned Swift CI pending**
 
 ## Source and scope
 
@@ -69,8 +69,6 @@ and adversarial validator paths. Repository-wide coverage remains the
 historical Phase 1 value until the Swift suite can run on the pinned Xcode 16.4
 lane. No Swift PASS or updated percentage is claimed from this host.
 
-Before Phase 2 begins:
-
-1. the project owner must accept or explicitly amend ADRs 0001–0004; and
-2. the remediation branch must pass the pinned CI lane, including the four new
-   Parakeet tests and both architecture commands.
+The project owner accepted ADRs 0001–0004 on 2026-07-31. Before Phase 2 begins,
+the remediation branch must pass the pinned CI lane, including the four new
+Parakeet tests and both architecture commands.

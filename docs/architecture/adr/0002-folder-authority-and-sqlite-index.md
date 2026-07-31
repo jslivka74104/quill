@@ -1,6 +1,6 @@
 # ADR 0002: Session folders own evidence and overlays
 
-Status: **Proposed**
+Status: **Accepted**
 Date: 2026-07-29
 
 ## Context

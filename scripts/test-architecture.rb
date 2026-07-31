@@ -117,11 +117,22 @@ class ArchitectureContractTest < Minitest::Test
   def test_phase_zero_defers_measurement_gates_without_blocking_test_foundation
     baseline = ARCH.join("phase-0-baseline.md").read
 
+    assert_includes baseline, "Status: **Accepted — Phase 0 complete**"
     assert_includes baseline, "deferred to the foundation boundary"
-    assert_includes baseline, "No Phase 2 production change may begin until acceptance is recorded."
+    assert_includes baseline, "Phase 2\nmay begin only after the remediation branch also passes its pinned CI lane."
     refute_includes baseline,
                     "The full-size model and signed App Sandbox/Core Audio feasibility gate\n" \
                     "      has measured evidence."
+  end
+
+  def test_adrs_record_owner_acceptance_without_clearing_adr_0004_for_production
+    REQUIRED_ADRS.first(3).each do |name|
+      assert_includes ARCH.join("adr", name).read, "Status: **Accepted**"
+    end
+
+    model_adr = ARCH.join("adr", REQUIRED_ADRS.last).read
+    assert_includes model_adr, "Status: **Accepted — Option C conditionally selected"
+    assert_includes model_adr, "It does not clear Option C for production use."
   end
 
   def test_phase_one_evidence_does_not_deny_its_recorded_remote_runs

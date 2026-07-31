@@ -1,6 +1,6 @@
 # ADR 0003: Version transcripts and scope identity explicitly
 
-Status: **Proposed**
+Status: **Accepted**
 Date: 2026-07-29
 
 ## Context

@@ -1,6 +1,6 @@
 # ADR 0001: Begin with one application process
 
-Status: **Proposed**
+Status: **Accepted**
 Date: 2026-07-29
 
 ## Context

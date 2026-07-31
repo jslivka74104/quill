@@ -1,6 +1,6 @@
 # ADR 0004: Choose verified model provisioning
 
-Status: **Proposed — Option C conditionally selected; acceptance pending measurements**
+Status: **Accepted — Option C conditionally selected; production use remains measurement-blocked**
 Date: 2026-07-29
 
 ## Context
@@ -157,13 +157,14 @@ Conditionally select Option C, a Quill-owned hash-pinned first-use download,
 because it satisfies the accepted small-DMG experience and keeps recording
 independent from model readiness.
 
-This is not Accepted until the required full-size spike proves integrity,
-repair, offline record-only behavior, FluidAudio loading from the activated
-location, final entitlements, and captured meeting-data non-egress. Production
-implementation may not begin while this status remains Proposed. If Option C
-fails a security objective or has no owned repair path, architecture work stops
-for an amended decision; it does not silently fall back to FluidAudio-managed
-downloads.
+Acceptance of this ADR approves the provisioning decision process and the
+conditional Option C direction. It does not clear Option C for production use.
+The required full-size spike must still prove integrity, repair, offline
+record-only behavior, FluidAudio loading from the activated location, final
+entitlements, and captured meeting-data non-egress before production
+implementation begins. If Option C fails a security objective or has no owned
+repair path, architecture work stops for an amended decision; it does not
+silently fall back to FluidAudio-managed downloads.
 
 ## Decision rule
 
@@ -178,9 +179,9 @@ Choose the lowest-complexity option that:
 Static absence of the network entitlement is a weighted security advantage for
 Options A and B. It does not automatically outweigh measured update cost.
 
-Record the selected option, measurements, rejected tradeoffs, and final
-entitlements here before changing this ADR to Accepted. Until then, diagrams
-must show Option C as conditional and evidence-blocked rather than Accepted.
+Record the final selected option, measurements, rejected tradeoffs, and
+entitlements here before clearing the production-use block. Until then,
+diagrams must show Option C as conditional and evidence-blocked.
 
 ## Verification
 

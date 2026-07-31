@@ -1,6 +1,6 @@
 # Phase 0: Architecture baseline
 
-Status: **Remediated — project-owner acceptance pending**
+Status: **Accepted — Phase 0 complete**
 Started: 2026-07-31
 
 Phase 0 makes the architecture package reviewable and enforceable. It does not
@@ -39,7 +39,8 @@ package is not a valid foundation for implementation.
 - [x] The ordered change plan uses stable slugs and contains no speculative PR
       references.
 - [x] Governing rules are written down in a repository-local document.
-- [ ] ADRs 0001–0004 are accepted by the project owner or explicitly amended.
+- [x] ADRs 0001–0004 were accepted by the project owner on 2026-07-31; ADR
+      0004 retains its explicit measurement block before production use.
 - [x] Full-size model and signed App Sandbox/Core Audio measurements are
       deferred to the foundation boundary before their dependent production
       changes; they do not deadlock the Phase 0 documentation gate.
@@ -64,11 +65,11 @@ claimed as implemented by this documentation-only phase.
 
 ## Phase 0 exit gate
 
-Phase 0 is complete when the project owner accepts or explicitly amends ADRs
-0001–0004 and both validation commands pass from a clean checkout. The
-documentation package and `test-foundation` may land before owner acceptance
-because they add contracts and verification without implementing v2 product
-behavior. No Phase 2 production change may begin until acceptance is recorded.
+Phase 0 is complete: the project owner accepted ADRs 0001–0004 on 2026-07-31,
+and both validation commands pass from a clean checkout. The documentation
+package and `test-foundation` landed before owner acceptance because they add
+contracts and verification without implementing v2 product behavior. Phase 2
+may begin only after the remediation branch also passes its pinned CI lane.
 
 The full-size model and signed App Sandbox/Core Audio feasibility work is
 deferred to the foundation boundary in the ordered change plan. Those remain
