@@ -47,7 +47,7 @@
     "speaker_labels": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/speaker_label"
+        "$ref": "#/$defs/speaker_label_event"
       }
     },
     "word_disposition_overrides": {
@@ -102,18 +102,24 @@
         }
       ]
     },
-    "speaker_label": {
+    "speaker_label_event": {
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "speaker_label_event_id",
         "speaker_cluster_id",
         "display_name",
         "state",
         "source",
         "confidence",
-        "updated_at"
+        "created_at",
+        "supersedes_speaker_label_event_id"
       ],
       "properties": {
+        "speaker_label_event_id": {
+          "type": "string",
+          "format": "uuid"
+        },
         "speaker_cluster_id": {
           "$ref": "#/$defs/cluster_id"
         },
@@ -141,9 +147,20 @@
         "confidence": {
           "$ref": "#/$defs/nullable_confidence"
         },
-        "updated_at": {
+        "created_at": {
           "type": "string",
           "format": "date-time"
+        },
+        "supersedes_speaker_label_event_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },

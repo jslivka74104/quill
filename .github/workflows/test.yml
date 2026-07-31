@@ -26,5 +26,11 @@ jobs:
           [[ "$xcode_version" == Xcode\ 16.4* ]]
           swift --version
 
+      - name: Test architecture contracts
+        run: ruby scripts/test-architecture.rb
+
+      - name: Validate architecture package
+        run: ruby scripts/validate-architecture.rb
+
       - name: Run package tests
         run: swift test

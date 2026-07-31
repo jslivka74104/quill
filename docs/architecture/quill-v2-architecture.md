@@ -673,6 +673,7 @@ portability decision rather than silently becoming SQLite-only user data.
 | evidence fingerprint | content identity of canonical tracks | hashes in manifest/index | equal content can be detected |
 | `transcriptID` | immutable transcript generation | transcript file UUID | retained with that generation |
 | `speakerClusterID` | session-local diarization hypothesis | transcript generation | never implies a person |
+| `speakerLabelEventID` | one immutable suggestion, confirmation, rename, or revert event | `annotations.json` UUID | retained in a same-cluster supersession chain |
 | `personID` | future explicitly managed human identity | future opt-in store | absent from v1 architecture |
 | `annotationID` | one user-authored overlay record | `annotations.json` UUID | retained with the overlay |
 | `dispositionOverrideID` | one user decision to restore/suppress transcript evidence without replacing text | `annotations.json` UUID | distinct from corrections and annotations |
@@ -714,6 +715,11 @@ The normative JSON Schemas are:
 
 - All timestamps are integer milliseconds from the earliest first audio sample
   in the session timeline.
+- Before a requested track accepts its first buffer, `start_offset_ms` is null
+  and its `capture_status` is `pending`. A live track is `recording` until its
+  writer reaches a terminal result. `started_at` is null until at least one
+  requested recorder starts successfully. Terminal manifests contain no
+  `pending` or `recording` tracks.
 - `state.json` part IDs are unique and ordinals are contiguous. The initial
   `capture_session` reference resolves to terminal `session.json`; each added
   `part_manifest` reference resolves to an immutable part manifest in the same
@@ -728,9 +734,10 @@ The normative JSON Schemas are:
 - Capture profile and per-track criticality obey the profile table. Every part
   has at least one primary track; secondary/optional tracks cannot become
   primary through a later renderer heuristic.
-- A `complete` track has `failure: null`; `degraded`, `interrupted`, `missing`,
-  and `invalid` tracks carry a typed failure. Track failure does not force the
-  session lifecycle state to `failed` when healthy evidence was finalized.
+- A `pending`, `recording`, or `complete` track has `failure: null`;
+  `degraded`, `interrupted`, `missing`, and `invalid` tracks carry a typed
+  failure. Track failure does not force the session lifecycle state to
+  `failed` when healthy evidence was finalized.
 - `primary_track_ids` is a nonempty subset of `expected_track_ids`;
   `completed_track_ids` is a subset of `expected_track_ids`. `completeness` is
   `complete` only when the two expected/completed sets are equal and failures
@@ -743,6 +750,10 @@ The normative JSON Schemas are:
   cluster.
 - Speaker clusters are session-local model output. Confirmed display names
   live only in `annotations.json`.
+- Speaker-label changes append immutable events. Every event has its own UUID;
+  a later event may supersede one earlier event for the same cluster. Chains
+  cannot cross clusters or cycle, and prior suggestions, confirmations,
+  renames, and user reverts remain inspectable.
 - Editing interview details never silently renames or moves the folder; Finder
   location and session metadata are separate user-controlled values.
 - Every word has a presentation disposition. `suppressed_echo` retains the
@@ -1217,9 +1228,13 @@ reporter without developer intervention:
 A mocked UI path does not prove TCC, Core Audio, filesystem remapping, local
 model provisioning, or audible playback behavior.
 
-Every production change follows RED → GREEN. The intended failing test must be
-compiled and executed before implementation. Two consecutive reports that a
-required path cannot be exercised stop the work and mark it blocked.
+Every production change follows RED → GREEN. A runtime RED must compile and
+execute the intended failing test before implementation. A compile-time RED is
+valid only when the missing API, access seam, or type contract is itself the
+intended implementation boundary and the compiler reaches that exact failure;
+syntax errors, broken setup, missing dependencies, and unrelated failures do
+not count. Two consecutive reports that a required path cannot be exercised
+stop the work and mark it blocked.
 
 ### CI gates
 

@@ -36,9 +36,11 @@ runtime behavior is changed.
 - Command: `swift test` with local Command Line Tools framework/cache flags
   documented below.
 - Result: the executable and dependencies compiled, then the test target
-  failed for the intended reasons: `SessionMeta` and `Transcript` were
-  file-private, `AppController.format` was private, and the injectable
-  root-precedence overload did not exist.
+  reached an intentional compile-time RED because the characterization seams
+  did not yet exist: `SessionMeta` and `Transcript` were file-private,
+  `AppController.format` was private, and the injectable root-precedence
+  overload was absent. This checkpoint proves scaffold/API absence, not a
+  behavioral regression.
 
 ### GREEN
 
@@ -143,7 +145,7 @@ real-user Inbox safety.
 - Cleanliness: `git status --short --branch` reported
   `## master...origin/master` with no modified or untracked files.
 
-The workflow is present in that verified checkout and invokes plain
-`swift test` as a direct step. A remote GitHub Actions result cannot exist
-until the local commits are pushed; pushing remains outside this change's
-local evidence and requires explicit owner approval.
+That clean-checkout record predates the push that created remote evidence.
+Subsequent GitHub Actions runs `30647885418` at `d34f291` and `30648034509` at
+`a458158` both passed the pinned Xcode 16.4 lane. The latter is the final Phase
+1 commit before foundation remediation.

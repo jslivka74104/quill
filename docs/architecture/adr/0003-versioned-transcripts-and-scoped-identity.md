@@ -39,8 +39,8 @@ Introduce:
 - a required presentation disposition on every word;
 - non-destructive `suppressed_echo` metadata containing the different matched
   track/range, method, confidence, and therefore echo direction;
-- user-confirmed speaker display names in `annotations.json`, never in
-  transcript evidence;
+- immutable speaker-label events with stable IDs and same-cluster supersession
+  history in `annotations.json`, never mutable names in transcript evidence;
 - corrected reading text, original anchors/quotes, edit category, author, and
   history in `annotations.json`, never as transcript mutation;
 - durable human-review items with open/resolved history;

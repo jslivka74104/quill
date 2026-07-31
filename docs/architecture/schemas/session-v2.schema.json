@@ -78,8 +78,15 @@
       "format": "date-time"
     },
     "started_at": {
-      "type": "string",
-      "format": "date-time"
+      "oneOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "ended_at": {
       "oneOf": [
@@ -248,8 +255,15 @@
           "minLength": 1
         },
         "start_offset_ms": {
-          "type": "integer",
-          "minimum": 0
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "duration_ms": {
           "oneOf": [
@@ -264,6 +278,8 @@
         },
         "capture_status": {
           "enum": [
+            "pending",
+            "recording",
             "complete",
             "degraded",
             "interrupted",

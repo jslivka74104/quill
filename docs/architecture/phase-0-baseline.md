@@ -1,6 +1,6 @@
 # Phase 0: Architecture baseline
 
-Status: **In progress**
+Status: **Remediated — project-owner acceptance pending**
 Started: 2026-07-31
 
 Phase 0 makes the architecture package reviewable and enforceable. It does not
@@ -40,27 +40,37 @@ package is not a valid foundation for implementation.
       references.
 - [x] Governing rules are written down in a repository-local document.
 - [ ] ADRs 0001–0004 are accepted by the project owner or explicitly amended.
-- [ ] The full-size model and signed App Sandbox/Core Audio feasibility gate
-      has measured evidence.
-- [ ] The package is committed atomically from a clean checkout.
+- [x] Full-size model and signed App Sandbox/Core Audio measurements are
+      deferred to the foundation boundary before their dependent production
+      changes; they do not deadlock the Phase 0 documentation gate.
+- [x] The package was committed atomically from a clean checkout in `42a86ff`.
 
 ## Validation commands
 
 Run these from the repository root:
 
 ```sh
+ruby scripts/test-architecture.rb
 ruby scripts/validate-architecture.rb
 ```
 
-The validator checks the required package files, parses every schema, verifies
-cross-file `$ref` targets and local Markdown links, and rejects speculative PR
-references. The schema cross-file invariants and contract fixtures belong to
-Phase 1's test foundation and Phase 3's contracts work; they must not be
+The contract tests adversarially remove named package members, check the
+pre-terminal lifecycle and speaker-label history shapes, and verify CI
+enforcement. The validator requires the exact four ADRs and five schemas,
+parses every schema, verifies cross-file `$ref` targets and local Markdown
+links, and rejects speculative PR references. Broader schema cross-file
+invariants and product fixtures belong to `contracts-v2`; they must not be
 claimed as implemented by this documentation-only phase.
 
 ## Phase 0 exit gate
 
-Phase 0 is complete when the project owner accepts the package, all validation
-commands pass from a clean checkout, and the package is committed atomically.
-The next change is `test-foundation`; no product implementation should begin
-before that gate is recorded.
+Phase 0 is complete when the project owner accepts or explicitly amends ADRs
+0001–0004 and both validation commands pass from a clean checkout. The
+documentation package and `test-foundation` may land before owner acceptance
+because they add contracts and verification without implementing v2 product
+behavior. No Phase 2 production change may begin until acceptance is recorded.
+
+The full-size model and signed App Sandbox/Core Audio feasibility work is
+deferred to the foundation boundary in the ordered change plan. Those remain
+hard gates before `contracts-v2` and their dependent production paths, not
+prerequisites that make the Phase 0 documentation gate impossible to close.
