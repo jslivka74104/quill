@@ -87,7 +87,7 @@ enum Config {
     /// config loading at the caller preserves the existing runtime behavior.
     static func resolveRoot(
         cliOverride: String?,
-        configured: URL?,
+        configured: @autoclosure () -> URL?,
         defaultRoot: URL
     ) -> URL {
         if let cliOverride {
@@ -96,6 +96,6 @@ enum Config {
                 isDirectory: true
             )
         }
-        return configured ?? defaultRoot
+        return configured() ?? defaultRoot
     }
 }
