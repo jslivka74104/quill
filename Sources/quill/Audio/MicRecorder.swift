@@ -1,4 +1,5 @@
-import AVFoundation
+// Xcode 16.4's SDK predates AVAudioFormat's NS_SWIFT_SENDABLE annotation.
+@preconcurrency import AVFoundation
 import Foundation
 
 /// Records the default input device to a file via AVAudioEngine, encoding AAC
