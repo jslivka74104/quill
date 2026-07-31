@@ -1,0 +1,428 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quill.local/schemas/transcript-v2.schema.json",
+  "title": "Quill Transcript v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "session_id",
+    "transcript_id",
+    "created_at",
+    "timebase",
+    "language",
+    "provenance",
+    "expected_track_ids",
+    "primary_track_ids",
+    "completed_track_ids",
+    "completeness",
+    "failures",
+    "speaker_clusters",
+    "words",
+    "blocks"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "session_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "transcript_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "timebase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unit",
+        "origin"
+      ],
+      "properties": {
+        "unit": {
+          "const": "milliseconds"
+        },
+        "origin": {
+          "const": "earliest_track_first_sample"
+        }
+      }
+    },
+    "language": {
+      "type": "string",
+      "minLength": 2
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "expected_track_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/track_id"
+      }
+    },
+    "primary_track_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/track_id"
+      }
+    },
+    "completed_track_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/track_id"
+      }
+    },
+    "completeness": {
+      "enum": [
+        "complete",
+        "partial"
+      ]
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/failure"
+      }
+    },
+    "speaker_clusters": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/speaker_cluster"
+      }
+    },
+    "words": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/word"
+      }
+    },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/block"
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "track_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    },
+    "word_id": {
+      "type": "string",
+      "pattern": "^w[0-9]{8,}$"
+    },
+    "cluster_id": {
+      "type": "string",
+      "pattern": "^spk_[A-Za-z0-9][A-Za-z0-9._-]{0,59}$"
+    },
+    "nullable_confidence": {
+      "oneOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "engine",
+        "engine_version",
+        "model_id",
+        "model_sha256",
+        "settings_sha256",
+        "locale"
+      ],
+      "properties": {
+        "engine": {
+          "type": "string",
+          "minLength": 1
+        },
+        "engine_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "settings_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "locale": {
+          "type": "string",
+          "minLength": 2
+        },
+        "diarization_engine": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "diarization_model_sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "track_id",
+        "code",
+        "message"
+      ],
+      "properties": {
+        "track_id": {
+          "$ref": "#/$defs/track_id"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "speaker_cluster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "speaker_cluster_id",
+        "track_id",
+        "source",
+        "confidence"
+      ],
+      "properties": {
+        "speaker_cluster_id": {
+          "$ref": "#/$defs/cluster_id"
+        },
+        "track_id": {
+          "$ref": "#/$defs/track_id"
+        },
+        "source": {
+          "enum": [
+            "track_prior",
+            "diarization",
+            "imported"
+          ]
+        },
+        "confidence": {
+          "$ref": "#/$defs/nullable_confidence"
+        }
+      }
+    },
+    "echo_suppression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason",
+        "method",
+        "matched_track_id",
+        "matched_start_ms",
+        "matched_end_ms",
+        "confidence"
+      ],
+      "properties": {
+        "reason": {
+          "const": "cross_track_echo"
+        },
+        "method": {
+          "enum": [
+            "cross_track_token_similarity",
+            "imported"
+          ]
+        },
+        "matched_track_id": {
+          "$ref": "#/$defs/track_id"
+        },
+        "matched_start_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "matched_end_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "confidence": {
+          "$ref": "#/$defs/nullable_confidence"
+        }
+      }
+    },
+    "word": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "word_id",
+        "ordinal",
+        "track_id",
+        "speaker_cluster_id",
+        "start_ms",
+        "end_ms",
+        "text",
+        "confidence",
+        "presentation_disposition",
+        "echo_suppression"
+      ],
+      "properties": {
+        "word_id": {
+          "$ref": "#/$defs/word_id"
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "track_id": {
+          "$ref": "#/$defs/track_id"
+        },
+        "speaker_cluster_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/cluster_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "start_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "confidence": {
+          "$ref": "#/$defs/nullable_confidence"
+        },
+        "presentation_disposition": {
+          "enum": [
+            "included",
+            "suppressed_echo"
+          ]
+        },
+        "echo_suppression": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/echo_suppression"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "presentation_disposition": {
+                "const": "suppressed_echo"
+              }
+            },
+            "required": [
+              "presentation_disposition"
+            ]
+          },
+          "then": {
+            "properties": {
+              "echo_suppression": {
+                "$ref": "#/$defs/echo_suppression"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "echo_suppression": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "block_id",
+        "kind",
+        "start_word_id",
+        "end_word_id",
+        "break_reason"
+      ],
+      "properties": {
+        "block_id": {
+          "type": "string",
+          "pattern": "^b[0-9]{6,}$"
+        },
+        "kind": {
+          "enum": [
+            "speech",
+            "pause",
+            "non_speech"
+          ]
+        },
+        "start_word_id": {
+          "$ref": "#/$defs/word_id"
+        },
+        "end_word_id": {
+          "$ref": "#/$defs/word_id"
+        },
+        "break_reason": {
+          "enum": [
+            "sentence",
+            "silence",
+            "speaker_change",
+            "part_boundary",
+            "length",
+            "imported"
+          ]
+        }
+      }
+    }
+  }
+}

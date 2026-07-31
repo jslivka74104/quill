@@ -5,6 +5,12 @@ click records your mic and all system audio as two separate tracks; when you
 stop, quill transcribes both on-device and writes a speaker-tagged transcript.
 Nothing ever leaves the machine.
 
+The v2 target and its implementation rules are documented in the
+[architecture baseline](docs/architecture/quill-v2-architecture.md). Phase 0
+is documentation-only; the current executable and installation instructions
+below describe the legacy implementation until the signed-app migration is
+complete.
+
 Named for the feather. Sibling of [parrot](https://github.com/digimata/parrot), same skeleton: single
 Swift binary, menu-bar tray, no app bundle.
 

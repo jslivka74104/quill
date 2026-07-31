@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quill.local/schemas/part-v1.schema.json",
+  "title": "Quill Immutable Imported Part Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "session_id",
+    "part_id",
+    "created_at",
+    "source_kind",
+    "timebase",
+    "tracks"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "session_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "part_id": {
+      "type": "string",
+      "pattern": "^part-[0-9]{4,}$"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_kind": {
+      "const": "imported"
+    },
+    "timebase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unit",
+        "origin"
+      ],
+      "properties": {
+        "unit": {
+          "const": "milliseconds"
+        },
+        "origin": {
+          "const": "part_first_sample"
+        }
+      }
+    },
+    "tracks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/track"
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "track": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "track_id",
+        "role",
+        "criticality",
+        "relative_path",
+        "media_type",
+        "start_offset_ms",
+        "duration_ms",
+        "status",
+        "failure",
+        "byte_count",
+        "sha256"
+      ],
+      "properties": {
+        "track_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "role": {
+          "enum": [
+            "imported",
+            "other"
+          ]
+        },
+        "criticality": {
+          "enum": [
+            "primary",
+            "secondary",
+            "optional"
+          ]
+        },
+        "relative_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_offset_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duration_ms": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "complete",
+            "missing",
+            "invalid"
+          ]
+        },
+        "failure": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/part_failure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "byte_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "part_failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

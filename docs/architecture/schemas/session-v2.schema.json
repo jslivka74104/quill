@@ -1,0 +1,362 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quill.local/schemas/session-v2.schema.json",
+  "title": "Quill Capture and Initial Evidence Manifest v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "revision",
+    "session_id",
+    "capture_profile",
+    "capture_part_id",
+    "state",
+    "failure",
+    "created_at",
+    "started_at",
+    "ended_at",
+    "timebase",
+    "tracks"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "session_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "capture_profile": {
+      "enum": [
+        "online_meeting",
+        "phone_speaker",
+        "phone_via_mac",
+        "in_person",
+        "imported_media"
+      ]
+    },
+    "capture_part_id": {
+      "type": "string",
+      "pattern": "^part-[0-9]{4,}$"
+    },
+    "derived_from_session_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "format": "uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "state": {
+      "enum": [
+        "starting",
+        "recording",
+        "complete",
+        "interrupted",
+        "failed"
+      ]
+    },
+    "failure": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/session_failure"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ended_at": {
+      "oneOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "duration_ms": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "timebase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unit",
+        "origin"
+      ],
+      "properties": {
+        "unit": {
+          "const": "milliseconds"
+        },
+        "origin": {
+          "const": "earliest_track_first_sample"
+        }
+      }
+    },
+    "tracks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/track"
+      }
+    },
+    "legacy_artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/legacy_artifact"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "properties": {
+          "failure": {
+            "$ref": "#/$defs/session_failure"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "failure": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "session_failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "phase",
+        "message",
+        "observed_at"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "phase": {
+          "enum": [
+            "starting",
+            "capture",
+            "finalization",
+            "storage"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "track": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "track_id",
+        "part_id",
+        "role",
+        "criticality",
+        "relative_path",
+        "media_type",
+        "start_offset_ms",
+        "capture_status",
+        "failure",
+        "byte_count",
+        "sha256"
+      ],
+      "properties": {
+        "track_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "part_id": {
+          "type": "string",
+          "pattern": "^part-[0-9]{4,}$"
+        },
+        "role": {
+          "enum": [
+            "microphone",
+            "system",
+            "imported",
+            "other"
+          ]
+        },
+        "criticality": {
+          "enum": [
+            "primary",
+            "secondary",
+            "optional"
+          ]
+        },
+        "relative_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_offset_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duration_ms": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "capture_status": {
+          "enum": [
+            "complete",
+            "degraded",
+            "interrupted",
+            "missing",
+            "invalid"
+          ]
+        },
+        "failure": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/track_failure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "byte_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "track_failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message",
+        "observed_at",
+        "recovery_attempted"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "recovery_attempted": {
+          "type": "boolean"
+        }
+      }
+    },
+    "legacy_artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "relative_path",
+        "sha256"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "meta_v1",
+            "transcript_v1",
+            "markdown_v1",
+            "log_v1"
+          ]
+        },
+        "relative_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+        },
+        "sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

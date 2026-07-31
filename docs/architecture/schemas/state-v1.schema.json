@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quill.local/schemas/state-v1.schema.json",
+  "title": "Quill Mutable Interview State v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "revision",
+    "session_id",
+    "updated_at",
+    "details",
+    "parts",
+    "transcripts",
+    "active_transcript_id"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "session_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "details": {
+      "$ref": "#/$defs/interview_details"
+    },
+    "parts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/part_reference"
+      }
+    },
+    "transcripts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/transcript_reference"
+      }
+    },
+    "active_transcript_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "format": "uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "interview_details": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_detail"
+          }
+        },
+        "story_subject": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "private_notes": {
+          "type": "string"
+        }
+      }
+    },
+    "source_detail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "job_title": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "organization": {
+          "type": "string",
+          "maxLength": 300
+        }
+      }
+    },
+    "part_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "part_id",
+        "ordinal",
+        "manifest_kind",
+        "relative_path"
+      ],
+      "properties": {
+        "part_id": {
+          "type": "string",
+          "pattern": "^part-[0-9]{4,}$"
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "manifest_kind": {
+          "enum": [
+            "capture_session",
+            "part_manifest"
+          ]
+        },
+        "relative_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "manifest_kind": {
+                "const": "capture_session"
+              }
+            },
+            "required": [
+              "manifest_kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "relative_path": {
+                "const": "session.json"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "relative_path": {
+                "pattern": "^parts/part-[0-9]{4,}\\.json$"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "transcript_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transcript_id",
+        "schema_version",
+        "relative_path",
+        "created_at",
+        "status"
+      ],
+      "properties": {
+        "transcript_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "schema_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "relative_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "active",
+            "superseded",
+            "failed"
+          ]
+        }
+      }
+    }
+  }
+}

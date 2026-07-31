@@ -1,0 +1,489 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quill.local/schemas/annotations-v1.schema.json",
+  "title": "Quill Session Annotations v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "revision",
+    "session_id",
+    "base_transcript_id",
+    "updated_at",
+    "speaker_labels",
+    "word_disposition_overrides",
+    "text_corrections",
+    "review_items",
+    "timeline_markers",
+    "annotations"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "session_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "base_transcript_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "format": "uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "speaker_labels": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/speaker_label"
+      }
+    },
+    "word_disposition_overrides": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/word_disposition_override"
+      }
+    },
+    "text_corrections": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/text_correction"
+      }
+    },
+    "review_items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/review_item"
+      }
+    },
+    "timeline_markers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/timeline_marker"
+      }
+    },
+    "annotations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/annotation"
+      }
+    }
+  },
+  "$defs": {
+    "word_id": {
+      "type": "string",
+      "pattern": "^w[0-9]{8,}$"
+    },
+    "cluster_id": {
+      "type": "string",
+      "pattern": "^spk_[A-Za-z0-9][A-Za-z0-9._-]{0,59}$"
+    },
+    "nullable_confidence": {
+      "oneOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "speaker_label": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "speaker_cluster_id",
+        "display_name",
+        "state",
+        "source",
+        "confidence",
+        "updated_at"
+      ],
+      "properties": {
+        "speaker_cluster_id": {
+          "$ref": "#/$defs/cluster_id"
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "state": {
+          "enum": [
+            "suggested",
+            "confirmed"
+          ]
+        },
+        "source": {
+          "enum": [
+            "manual",
+            "accessibility",
+            "captions",
+            "ocr",
+            "provider_api",
+            "imported"
+          ]
+        },
+        "confidence": {
+          "$ref": "#/$defs/nullable_confidence"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "word_disposition_override": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "disposition_override_id",
+        "transcript_id",
+        "word_id",
+        "presentation_disposition",
+        "reason",
+        "updated_at"
+      ],
+      "properties": {
+        "disposition_override_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "transcript_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "word_id": {
+          "$ref": "#/$defs/word_id"
+        },
+        "presentation_disposition": {
+          "enum": [
+            "included",
+            "suppressed_echo"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "transcript_anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transcript_id",
+        "start_word_id",
+        "end_word_id",
+        "quote"
+      ],
+      "properties": {
+        "transcript_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "start_word_id": {
+          "$ref": "#/$defs/word_id"
+        },
+        "end_word_id": {
+          "$ref": "#/$defs/word_id"
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "timeline_anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "part_id",
+        "track_id",
+        "start_ms",
+        "end_ms"
+      ],
+      "properties": {
+        "part_id": {
+          "type": "string",
+          "pattern": "^part-[0-9]{4,}$"
+        },
+        "track_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "start_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "anchor": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/transcript_anchor"
+        },
+        {
+          "$ref": "#/$defs/timeline_anchor"
+        }
+      ]
+    },
+    "reanchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "previous_anchor",
+        "method",
+        "score"
+      ],
+      "properties": {
+        "previous_anchor": {
+          "$ref": "#/$defs/transcript_anchor"
+        },
+        "method": {
+          "enum": [
+            "exact_word_ids",
+            "quote_context",
+            "manual"
+          ]
+        },
+        "score": {
+          "$ref": "#/$defs/nullable_confidence"
+        }
+      }
+    },
+    "text_correction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "correction_id",
+        "anchor",
+        "replacement_text",
+        "category",
+        "author",
+        "state",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "correction_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "anchor": {
+          "$ref": "#/$defs/transcript_anchor"
+        },
+        "replacement_text": {
+          "type": "string"
+        },
+        "category": {
+          "enum": [
+            "factual",
+            "punctuation",
+            "grammar",
+            "filler_removal",
+            "redaction",
+            "other"
+          ]
+        },
+        "author": {
+          "const": "user"
+        },
+        "state": {
+          "enum": [
+            "active",
+            "superseded",
+            "reverted"
+          ]
+        },
+        "supersedes_correction_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reanchored_from": {
+          "$ref": "#/$defs/reanchor"
+        }
+      }
+    },
+    "review_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "review_item_id",
+        "kind",
+        "anchor",
+        "state",
+        "created_at",
+        "updated_at",
+        "resolved_at"
+      ],
+      "properties": {
+        "review_item_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "kind": {
+          "enum": [
+            "low_confidence",
+            "unclear",
+            "speaker_uncertain",
+            "dictionary_suggestion",
+            "partial_evidence",
+            "transcription_failure"
+          ]
+        },
+        "anchor": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "enum": [
+            "open",
+            "resolved"
+          ]
+        },
+        "resolution_note": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "resolved_at": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "timeline_marker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "marker_id",
+        "kind",
+        "anchor",
+        "marked_at_ms",
+        "created_at"
+      ],
+      "properties": {
+        "marker_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "kind": {
+          "enum": [
+            "hot_quote",
+            "fact_check"
+          ]
+        },
+        "anchor": {
+          "$ref": "#/$defs/timeline_anchor"
+        },
+        "marked_at_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "annotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "annotation_id",
+        "kind",
+        "anchor",
+        "body",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "annotation_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "kind": {
+          "enum": [
+            "note",
+            "highlight"
+          ]
+        },
+        "anchor": {
+          "$ref": "#/$defs/anchor"
+        },
+        "body": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reanchored_from": {
+          "$ref": "#/$defs/reanchor"
+        }
+      }
+    }
+  }
+}
