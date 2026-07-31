@@ -1,7 +1,7 @@
 # `test-foundation` TDD evidence
 
 Date: 2026-07-31
-Status: **Implementation green; clean-checkout verification pending**
+Status: **Local implementation and clean-checkout verification green; first remote CI run pending push**
 
 ## Source and scope
 
@@ -68,7 +68,7 @@ The CI image provides full Xcode 16.4 and runs the required plain `swift test`.
 | 7 | Transcript JSON round-trips its existing canonical values | `TranscriptTests.swift` | serialization unit | PASS |
 | 8 | Transcript Markdown renders minute and hour clocks exactly | `TranscriptTests.swift` | rendering unit | PASS |
 | 9 | Elapsed display preserves subhour and hour boundary formats | `ElapsedTimeFormattingTests.swift` | unit | PASS |
-| 10 | Pushes and pull requests invoke `swift test` directly on macOS 15 with Xcode 16.4 | `.github/workflows/test.yml` | CI contract | PENDING FIRST RUN |
+| 10 | Pushes and pull requests invoke `swift test` directly on macOS 15 with Xcode 16.4 | `.github/workflows/test.yml` | CI contract | DECLARED; FIRST REMOTE RUN PENDING |
 
 ## Production-source access changes
 
@@ -96,5 +96,19 @@ real-user Inbox safety.
 
 ## Clean-checkout evidence
 
-Pending after the CI/evidence commit. The final record will identify the exact
-commit, clean-clone command, architecture validation, and test result.
+- Commit checked: `140b38c ci: run Swift tests on declared Xcode toolchain`
+- Checkout: `git clone --no-local` into
+  `/private/tmp/quill-test-foundation.KoWo8D/quill`; the clone contained no
+  inherited `.build` directory.
+- Test: local-toolchain equivalent of `swift test` completed a full dependency
+  resolution and clean build in 83.30 seconds, then **10 tests in 4 suites
+  passed**.
+- Architecture: `ruby scripts/validate-architecture.rb` passed all five schema,
+  local reference, local link, and speculative-reference checks.
+- Cleanliness: `git status --short --branch` reported
+  `## master...origin/master` with no modified or untracked files.
+
+The workflow is present in that verified checkout and invokes plain
+`swift test` as a direct step. A remote GitHub Actions result cannot exist
+until the local commits are pushed; pushing remains outside this change's
+local evidence and requires explicit owner approval.
