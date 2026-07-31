@@ -188,7 +188,8 @@ actor TranscriptionCoordinator {
 
 /// The slice of meta.json the coordinator needs: which files exist, who they
 /// represent, and how far each track started after the earliest one.
-private struct SessionMeta {
+// Internal so @testable compatibility tests can lock down the v1 reader.
+struct SessionMeta {
     struct Track {
         let file: String
         let speaker: String
@@ -231,7 +232,8 @@ private struct SessionMeta {
 
 /// Canonical transcript. Property names are the JSON schema — this struct
 /// exists to be serialized.
-private struct Transcript: Codable {
+// Internal so @testable tests can preserve the serialized and rendered forms.
+struct Transcript: Codable {
     struct Segment: Codable {
         let speaker: String
         let start_ms: Int

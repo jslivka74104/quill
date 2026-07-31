@@ -76,12 +76,26 @@ enum Config {
 
     /// Resolve the recordings root from an optional CLI override.
     static func resolveRoot(cliOverride: String?) -> URL {
+        resolveRoot(
+            cliOverride: cliOverride,
+            configured: recordingsDir(),
+            defaultRoot: defaultRoot
+        )
+    }
+
+    /// Pure precedence seam used by the package tests. Keeping filesystem
+    /// config loading at the caller preserves the existing runtime behavior.
+    static func resolveRoot(
+        cliOverride: String?,
+        configured: URL?,
+        defaultRoot: URL
+    ) -> URL {
         if let cliOverride {
             return URL(
                 fileURLWithPath: (cliOverride as NSString).expandingTildeInPath,
                 isDirectory: true
             )
         }
-        return recordingsDir() ?? defaultRoot
+        return configured ?? defaultRoot
     }
 }

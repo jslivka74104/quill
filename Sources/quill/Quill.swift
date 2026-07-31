@@ -175,7 +175,8 @@ final class AppController {
         NSWorkspace.shared.open(root)
     }
 
-    private static func format(_ interval: TimeInterval) -> String {
+    /// Internal so package tests can preserve the menu's legacy clock format.
+    static func format(_ interval: TimeInterval) -> String {
         let total = Int(interval)
         let h = total / 3600, m = (total % 3600) / 60, s = total % 60
         return h > 0

@@ -41,7 +41,7 @@ struct SessionMetaTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         try Data("not json".utf8).write(to: directory.appendingPathComponent("meta.json"))
 
-        let error = #expect(throws: SessionMeta.MetaError.self) {
+        let error = try #require(throws: SessionMeta.MetaError.self) {
             try SessionMeta.read(from: directory)
         }
         #expect(
