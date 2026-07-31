@@ -48,6 +48,16 @@ runtime behavior is changed.
 - Guarantee: the tested legacy transformations and value boundaries retain
   their pre-Phase-1 behavior.
 
+### Diff-review regression cycle
+
+- RED checkpoint: `e614739 test: preserve lazy CLI root precedence`.
+- RED result: the new test proved the first helper refactor evaluated the
+  configured-root expression even when a CLI override was present.
+- GREEN checkpoint: `397104a fix: keep CLI root resolution lazy`.
+- GREEN result: the helper accepts a lazy configured-root input, all **11
+  tests in 4 suites passed**, and CLI precedence again short-circuits before
+  config loading exactly as it did before Phase 1.
+
 The local host has Command Line Tools rather than full Xcode. Its Swift
 Testing framework is installed outside the search/rpath locations inferred by
 SwiftPM, and its user cache paths are sandbox-restricted. Local evidence used
@@ -60,15 +70,16 @@ The CI image provides full Xcode 16.4 and runs the required plain `swift test`.
 | # | What is guaranteed | Test file | Type | Result |
 |---|---|---|---|---|
 | 1 | CLI root overrides configured and default roots | `ConfigTests.swift` | unit | PASS |
-| 2 | Configured root overrides the default when no CLI root exists | `ConfigTests.swift` | unit | PASS |
-| 3 | Default root and CLI tilde expansion retain legacy behavior | `ConfigTests.swift` | unit | PASS |
-| 4 | Two-track v1 metadata preserves file, speaker, order, and offsets | `SessionMetaTests.swift` | compatibility unit | PASS |
-| 5 | v1 metadata without offsets defaults both tracks to zero | `SessionMetaTests.swift` | compatibility unit | PASS |
-| 6 | Malformed metadata keeps the failing file path in its typed error | `SessionMetaTests.swift` | negative unit | PASS |
-| 7 | Transcript JSON round-trips its existing canonical values | `TranscriptTests.swift` | serialization unit | PASS |
-| 8 | Transcript Markdown renders minute and hour clocks exactly | `TranscriptTests.swift` | rendering unit | PASS |
-| 9 | Elapsed display preserves subhour and hour boundary formats | `ElapsedTimeFormattingTests.swift` | unit | PASS |
-| 10 | Pushes and pull requests invoke `swift test` directly on macOS 15 with Xcode 16.4 | `.github/workflows/test.yml` | CI contract | DECLARED; FIRST REMOTE RUN PENDING |
+| 2 | CLI root short-circuits without evaluating configured-root loading | `ConfigTests.swift` | regression unit | PASS |
+| 3 | Configured root overrides the default when no CLI root exists | `ConfigTests.swift` | unit | PASS |
+| 4 | Default root and CLI tilde expansion retain legacy behavior | `ConfigTests.swift` | unit | PASS |
+| 5 | Two-track v1 metadata preserves file, speaker, order, and offsets | `SessionMetaTests.swift` | compatibility unit | PASS |
+| 6 | v1 metadata without offsets defaults both tracks to zero | `SessionMetaTests.swift` | compatibility unit | PASS |
+| 7 | Malformed metadata keeps the failing file path in its typed error | `SessionMetaTests.swift` | negative unit | PASS |
+| 8 | Transcript JSON round-trips its existing canonical values | `TranscriptTests.swift` | serialization unit | PASS |
+| 9 | Transcript Markdown renders minute and hour clocks exactly | `TranscriptTests.swift` | rendering unit | PASS |
+| 10 | Elapsed display preserves subhour and hour boundary formats | `ElapsedTimeFormattingTests.swift` | unit | PASS |
+| 11 | Pushes and pull requests invoke `swift test` directly on macOS 15 with Xcode 16.4 | `.github/workflows/test.yml` | CI contract | DECLARED; FIRST REMOTE RUN PENDING |
 
 ## Production-source access changes
 
@@ -77,7 +88,7 @@ inputs; none changes the executable's public API or runtime outputs.
 
 | Source | Change | Reason |
 |---|---|---|
-| `Config.swift` | Added an internal pure overload; existing resolver delegates with the same values | Test precedence without reading or changing a real home-directory config |
+| `Config.swift` | Added an internal lazy-input overload; existing resolver delegates with the same values | Test precedence without reading or changing a real home-directory config, while preserving CLI short-circuiting |
 | `Quill.swift` | Changed `AppController.format` from `private` to `internal` | Test the existing elapsed clock directly |
 | `TranscriptionCoordinator.swift` | Changed `SessionMeta` from file-private to internal | Exercise the v1 compatibility reader |
 | `TranscriptionCoordinator.swift` | Changed `Transcript` from file-private to internal | Exercise Codable output and Markdown rendering through `write(to:)` |
@@ -85,10 +96,13 @@ inputs; none changes the executable's public API or runtime outputs.
 ## Coverage and known gaps
 
 The new suite covers the selected pure seams and their named boundary/error
-cases. Whole-executable line coverage is intentionally not used as a Phase 1
-gate: capture, TCC, AppKit control, model loading, and live filesystem behavior
-cannot be honestly covered by these isolated tests. Their required fixtures
-and integration targets remain assigned to later architecture phases.
+cases. `swift test --enable-code-coverage` followed by `llvm-cov report`
+measured 68 of 1,264 executable-source lines, or **5.38% whole-executable line
+coverage**. That repository-wide number is intentionally not used as a Phase
+1 gate: capture, TCC, AppKit control, model loading, and live filesystem
+behavior cannot be honestly covered by these isolated tests. Their required
+fixtures and integration targets remain assigned to later architecture
+phases.
 
 The CI workflow does not claim to prove microphone/system capture, sandbox
 behavior, model provisioning or accuracy, remapping, signing, notarization, or
@@ -96,12 +110,12 @@ real-user Inbox safety.
 
 ## Clean-checkout evidence
 
-- Commit checked: `140b38c ci: run Swift tests on declared Xcode toolchain`
+- Commit checked: `397104a fix: keep CLI root resolution lazy`
 - Checkout: `git clone --no-local` into
-  `/private/tmp/quill-test-foundation.KoWo8D/quill`; the clone contained no
+  `/private/tmp/quill-test-foundation-final.gEjVqQ/quill`; the clone contained no
   inherited `.build` directory.
 - Test: local-toolchain equivalent of `swift test` completed a full dependency
-  resolution and clean build in 83.30 seconds, then **10 tests in 4 suites
+  resolution and clean build in 81.68 seconds, then **11 tests in 4 suites
   passed**.
 - Architecture: `ruby scripts/validate-architecture.rb` passed all five schema,
   local reference, local link, and speculative-reference checks.
