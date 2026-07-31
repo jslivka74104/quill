@@ -30,7 +30,10 @@ let package = Package(
         ),
         .testTarget(
             name: "QuillTests",
-            dependencies: ["quill"]
+            dependencies: [
+                "quill",
+                .product(name: "FluidAudio", package: "FluidAudio"),
+            ]
         ),
     ]
 )
