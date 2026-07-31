@@ -1,7 +1,7 @@
 # `test-foundation` TDD evidence
 
 Date: 2026-07-31
-Status: **Local tests green; pinned Xcode 16.4 CI compatibility fix in progress**
+Status: **Local and pinned Xcode 16.4 CI tests green**
 
 ## Source and scope
 
@@ -58,7 +58,7 @@ runtime behavior is changed.
   tests in 4 suites passed**, and CLI precedence again short-circuits before
   config loading exactly as it did before Phase 1.
 
-### Pinned-toolchain compatibility RED
+### Pinned-toolchain compatibility RED → GREEN
 
 - Remote run: `30646589442` at commit `9859b2d`.
 - Command: plain `swift test` on macOS 15 with Xcode 16.4 / Swift 6.1.2.
@@ -72,6 +72,12 @@ runtime behavior is changed.
   marks the immutable `AVAudioFormat` class `NS_SWIFT_SENDABLE` and therefore
   cannot reproduce the older imported declaration in a source-level unit
   test.
+- Fix: `d34f291 fix: support Xcode 16.4 AVAudioFormat imports` marks only the
+  `AVFoundation` import in `MicRecorder.swift` as `@preconcurrency`, preserving
+  the typed error and recorder behavior while accepting the older SDK's
+  missing annotation.
+- GREEN run: `30647885418` used Xcode 16.4 / Swift 6.1.2, completed a clean
+  build in 70.99 seconds, and passed all **11 tests**.
 
 The local host has Command Line Tools rather than full Xcode. Its Swift
 Testing framework is installed outside the search/rpath locations inferred by
@@ -94,7 +100,7 @@ The CI image provides full Xcode 16.4 and runs the required plain `swift test`.
 | 8 | Transcript JSON round-trips its existing canonical values | `TranscriptTests.swift` | serialization unit | PASS |
 | 9 | Transcript Markdown renders minute and hour clocks exactly | `TranscriptTests.swift` | rendering unit | PASS |
 | 10 | Elapsed display preserves subhour and hour boundary formats | `ElapsedTimeFormattingTests.swift` | unit | PASS |
-| 11 | Pushes and pull requests invoke `swift test` directly on macOS 15 with Xcode 16.4 | `.github/workflows/test.yml` | CI contract | RED: XCODE 16.4 SENDABLE DIAGNOSTIC |
+| 11 | Pushes and pull requests invoke `swift test` directly on macOS 15 with Xcode 16.4 | `.github/workflows/test.yml` | CI contract | PASS |
 
 ## Production-source access changes
 
