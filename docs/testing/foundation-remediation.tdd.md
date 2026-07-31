@@ -1,7 +1,7 @@
 # Foundation remediation TDD evidence
 
 Date: 2026-07-31
-Status: **Architecture GREEN and project-owner accepted; pinned Swift CI pending**
+Status: **Complete — architecture GREEN, project-owner accepted, and pinned Swift CI passed**
 
 ## Source and scope
 
@@ -60,15 +60,16 @@ record. It does not begin the Phase 2 `remove-on-stop` production change.
 | CI runs architecture tests, package validation, and Swift tests | workflow contract test | contract | PASS |
 | Phase 0 defers later feasibility work without permitting Phase 2 before owner acceptance | phase-gate contract test | contract | PASS |
 | Historical Phase 1 evidence no longer denies the remote runs it cites | evidence contract test | contract | PASS |
-| Parakeet grouping handles empty input, punctuation, the one-second threshold, and the 60-word cap | `ParakeetSegmentationTests.swift` | Swift unit | PENDING PINNED CI |
+| Parakeet grouping handles empty input, punctuation, the one-second threshold, and the 60-word cap | `ParakeetSegmentationTests.swift` | Swift unit | PASS — CI run 30651193491 |
 
 ## Coverage and remaining gates
 
 The Ruby contract suite exercises every remediation concern and both positive
-and adversarial validator paths. Repository-wide coverage remains the
-historical Phase 1 value until the Swift suite can run on the pinned Xcode 16.4
-lane. No Swift PASS or updated percentage is claimed from this host.
+and adversarial validator paths. GitHub Actions run
+[`30651193491`](https://github.com/jslivka74104/quill/actions/runs/30651193491)
+passed on the pinned Swift 6.1 / Xcode 16.4 lane, including the four new
+Parakeet tests and both architecture commands. No updated repository-wide
+coverage percentage is claimed from this host.
 
-The project owner accepted ADRs 0001–0004 on 2026-07-31. Before Phase 2 begins,
-the remediation branch must pass the pinned CI lane, including the four new
-Parakeet tests and both architecture commands.
+The project owner accepted ADRs 0001–0004 on 2026-07-31. The remediation branch
+then passed the pinned CI lane, satisfying the remaining pre-Phase 2 gate.
