@@ -16,6 +16,25 @@ struct ConfigTests {
         #expect(resolved.path == "/cli")
     }
 
+    @Test func cliOverrideDoesNotReadConfiguredRoot() {
+        var didReadConfiguredRoot = false
+        let fallback = URL(fileURLWithPath: "/default", isDirectory: true)
+
+        func configuredRoot() -> URL? {
+            didReadConfiguredRoot = true
+            return URL(fileURLWithPath: "/configured", isDirectory: true)
+        }
+
+        let resolved = Config.resolveRoot(
+            cliOverride: "/cli",
+            configured: configuredRoot(),
+            defaultRoot: fallback
+        )
+
+        #expect(resolved.path == "/cli")
+        #expect(didReadConfiguredRoot == false)
+    }
+
     @Test func resolveRootUsesConfiguredRootWithoutCLIOverride() {
         let configured = URL(fileURLWithPath: "/configured", isDirectory: true)
         let fallback = URL(fileURLWithPath: "/default", isDirectory: true)
