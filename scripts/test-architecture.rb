@@ -73,6 +73,20 @@ class ArchitectureContractTest < Minitest::Test
     end
   end
 
+  def test_validator_rejects_an_unreviewed_extra_normative_schema
+    with_probe_copy do |probe|
+      FileUtils.cp(
+        probe.join("docs", "architecture", "schemas", "state-v1.schema.json"),
+        probe.join("docs", "architecture", "schemas", "unreviewed-v1.schema.json")
+      )
+
+      output, status = run_validator(probe)
+
+      refute status.success?, output
+      assert_includes output, "unreviewed-v1.schema.json"
+    end
+  end
+
   def test_session_schema_can_represent_preterminal_capture
     schema = read_schema("session-v2.schema.json")
     properties = schema.fetch("properties")
@@ -104,6 +118,7 @@ class ArchitectureContractTest < Minitest::Test
     baseline = ARCH.join("phase-0-baseline.md").read
 
     assert_includes baseline, "deferred to the foundation boundary"
+    assert_includes baseline, "No Phase 2 production change may begin until acceptance is recorded."
     refute_includes baseline,
                     "The full-size model and signed App Sandbox/Core Audio feasibility gate\n" \
                     "      has measured evidence."
