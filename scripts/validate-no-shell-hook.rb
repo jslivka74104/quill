@@ -21,6 +21,14 @@ RETIRED_HOOK_PATTERNS = {
   "retired runHook identifier" => /\brunHook\b/
 }.freeze
 
+def process_executables(source)
+  launch_paths = source.scan(/\.launchPath\s*=\s*"([^"]+)"/).flatten
+  executable_urls = source
+    .scan(/\.executableURL\s*=\s*URL\(fileURLWithPath:\s*"([^"]+)"\)/)
+    .flatten
+  launch_paths + executable_urls
+end
+
 unless SOURCE_ROOT.directory?
   warn "missing product source directory: #{SOURCE_ROOT}"
   exit 1
@@ -45,8 +53,13 @@ sources.each do |relative, source|
   allowed_executable = ALLOWED_PROCESS_SITES[relative]
   if allowed_executable.nil?
     failures << "#{relative}: unreviewed Process site"
-  elsif !source.include?(%("#{allowed_executable}"))
-    failures << "#{relative}: reviewed Process site no longer launches #{allowed_executable}"
+  else
+    process_count = source.scan(/\bProcess\(\)/).count
+    executables = process_executables(source)
+    unless executables.count == process_count &&
+           executables.all? { |executable| executable == allowed_executable }
+      failures << "#{relative}: reviewed Process site contains unapproved executables"
+    end
   end
 end
 
