@@ -2,6 +2,20 @@ import AppKit
 import ArgumentParser
 import Foundation
 
+/// Emits already-sanitized config migration notices through both channels.
+/// The sinks are injectable so package tests can prove cardinality without
+/// writing to a real stderr stream or launching a user notification.
+func reportConfigMigrationNotices(
+    _ notices: [ConfigMigrationNotice],
+    writeWarning: (String) -> Void,
+    showNotification: (String, String) -> Void
+) {
+    for notice in notices {
+        writeWarning("warning: \(notice.message)\n")
+        showNotification(notice.title, notice.message)
+    }
+}
+
 @main
 struct Quill: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -30,10 +44,13 @@ struct Run: ParsableCommand {
     @MainActor
     private func runMain() throws {
         let root = Config.resolveRoot(cliOverride: out)
-        for notice in Config.migrationNotices() {
-            FileHandle.standardError.write(Data("warning: \(notice.message)\n".utf8))
-            notifyUser(title: notice.title, body: notice.message)
-        }
+        reportConfigMigrationNotices(
+            Config.migrationNotices(),
+            writeWarning: { FileHandle.standardError.write(Data($0.utf8)) },
+            showNotification: { title, message in
+                notifyUser(title: title, body: message)
+            }
+        )
 
         // Non-blocking: permissions prompt on first recording, so warnings at
         // startup are informational, not fatal.
