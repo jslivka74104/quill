@@ -81,8 +81,7 @@ Optional, at `~/.config/quill/config.json`:
 ```json
 {
   "recordings_dir": "~/Recordings",
-  "transcription": { "enabled": true, "engine": "parakeet" },
-  "on_stop": "my-hook"
+  "transcription": { "enabled": true, "engine": "parakeet" }
 }
 ```
 
@@ -95,10 +94,10 @@ Optional, at `~/.config/quill/config.json`:
   the voice unit is live, macOS ducks other playback slightly (`.min` ducking
   is configured, but it can't be zeroed). On headphones there's no echo to
   cancel, so raw capture is the better default.
-- `on_stop` — shell command spawned with the session directory as its
-  argument, **after the transcript is written** (or right after recording if
-  transcription is disabled). Wire it to whatever comes next: summarization,
-  filing, indexing.
+
+The legacy `on_stop` setting is no longer supported. Quill ignores it and
+shows a configuration warning on every launch until the key is removed. Run
+post-recording automation explicitly outside Quill instead.
 
 ## CLI
 

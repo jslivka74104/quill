@@ -30,6 +30,10 @@ struct Run: ParsableCommand {
     @MainActor
     private func runMain() throws {
         let root = Config.resolveRoot(cliOverride: out)
+        for notice in Config.migrationNotices() {
+            FileHandle.standardError.write(Data("warning: \(notice.message)\n".utf8))
+            notifyUser(title: notice.title, body: notice.message)
+        }
 
         // Non-blocking: permissions prompt on first recording, so warnings at
         // startup are informational, not fatal.

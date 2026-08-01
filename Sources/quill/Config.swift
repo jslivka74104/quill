@@ -5,14 +5,16 @@ import Foundation
 ///     {
 ///       "recordings_dir": "~/Recordings",
 ///       "transcription": { "enabled": true, "engine": "parakeet" },
-///       "mic_voice_processing": true,
-///       "on_stop": "my-hook"
+///       "mic_voice_processing": true
 ///     }
 ///
 /// Resolution order for the recordings root: --out flag > config file >
-/// ~/Recordings. `on_stop` is a shell command spawned with the session
-/// directory as its argument — after the transcript is written, or right
-/// after recording when transcription is disabled.
+/// ~/Recordings.
+struct ConfigMigrationNotice: Equatable, Sendable {
+    let title: String
+    let message: String
+}
+
 enum Config {
     static let path = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".config/quill/config.json")
@@ -26,11 +28,26 @@ enum Config {
         return URL(fileURLWithPath: (dir as NSString).expandingTildeInPath, isDirectory: true)
     }
 
-    /// Shell command to spawn after each session's transcript is written (or
-    /// after recording, if transcription is disabled), or nil.
-    static func onStop() -> String? {
-        guard let cmd = load()?["on_stop"] as? String, !cmd.isEmpty else { return nil }
-        return cmd
+    /// Notices for removed settings in the user's current config. This is
+    /// called once by the application startup path, so a legacy key produces
+    /// one notice per process launch without changing the later config reads.
+    static func migrationNotices() -> [ConfigMigrationNotice] {
+        guard let config = load() else { return [] }
+        return migrationNotices(in: config)
+    }
+
+    /// Pure warning seam for package tests. Presence of the legacy key is
+    /// enough to warn: its value is intentionally ignored and never rendered.
+    static func migrationNotices(in config: [String: Any]) -> [ConfigMigrationNotice] {
+        guard config.keys.contains("on_stop") else { return [] }
+        return [
+            ConfigMigrationNotice(
+                title: "quill — configuration update required",
+                message: "The \"on_stop\" setting is no longer supported and was ignored. "
+                    + "Remove it from ~/.config/quill/config.json. "
+                    + "Quill no longer runs commands after recording."
+            ),
+        ]
     }
 
     /// Whether finished recordings are transcribed automatically. Default on.
