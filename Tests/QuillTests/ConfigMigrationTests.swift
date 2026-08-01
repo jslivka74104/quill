@@ -39,4 +39,35 @@ struct ConfigMigrationTests {
 
         #expect(notices.isEmpty)
     }
+
+    @Test func reportingEmitsEachNoticeOnceThroughBothChannels() {
+        let notice = ConfigMigrationNotice(title: "title", message: "message")
+        var warnings: [String] = []
+        var notifications: [(title: String, message: String)] = []
+
+        reportConfigMigrationNotices(
+            [notice],
+            writeWarning: { warnings.append($0) },
+            showNotification: { notifications.append((title: $0, message: $1)) }
+        )
+
+        #expect(warnings == ["warning: message\n"])
+        #expect(notifications.count == 1)
+        #expect(notifications[0].title == "title")
+        #expect(notifications[0].message == "message")
+    }
+
+    @Test func reportingNoNoticesEmitsNothing() {
+        var warningCount = 0
+        var notificationCount = 0
+
+        reportConfigMigrationNotices(
+            [],
+            writeWarning: { _ in warningCount += 1 },
+            showNotification: { _, _ in notificationCount += 1 }
+        )
+
+        #expect(warningCount == 0)
+        #expect(notificationCount == 0)
+    }
 }

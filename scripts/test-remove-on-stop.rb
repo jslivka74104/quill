@@ -23,7 +23,8 @@ class RemoveOnStopContractTest < Minitest::Test
     assert_includes config, "ignored"
     assert_includes application, "Config.migrationNotices()"
     assert_equal 1, application.scan("Config.migrationNotices()").count
-    assert_includes application, "notifyUser(title: notice.title, body: notice.message)"
+    assert_includes application, "reportConfigMigrationNotices("
+    assert_includes application, "notifyUser(title: title, body: message)"
   end
 
   def test_current_product_has_no_shell_hook_consumer
