@@ -105,6 +105,24 @@ class RemoveOnStopContractTest < Minitest::Test
     end
   end
 
+  def test_validator_rejects_an_extra_executable_in_a_reviewed_process_site
+    with_fixture do |fixture|
+      write_reviewed_process_sites(fixture)
+      write_source(fixture, "Sources/quill/Notify.swift", <<~SWIFT)
+        import Foundation
+        let notification = Process()
+        notification.launchPath = "/usr/bin/osascript"
+        let unexpected = Process()
+        unexpected.launchPath = "/usr/bin/true"
+      SWIFT
+
+      output, status = run_validator(fixture)
+
+      refute status.success?, output
+      assert_includes output, "reviewed Process site contains unapproved executables"
+    end
+  end
+
   def test_ci_runs_remove_on_stop_contract_and_validator
     workflow = ROOT.join(".github", "workflows", "test.yml").read
 
