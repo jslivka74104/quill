@@ -1,6 +1,6 @@
 # `remove-on-stop` TDD evidence
 
-Date: 2026-08-01
+Date: 2026-08-02
 Status: **Local GREEN; pinned Xcode 16.4 CI pending an authorized push**
 
 ## Source and scope
@@ -74,6 +74,30 @@ snapshots, LaunchAgent behavior, model provisioning, signing, or storage.
   list emits exactly one stderr warning and one notification per notice; an
   empty list emits neither.
 
+### Adversarial review remediation
+
+- RED checkpoint:
+  `348ea26 test: add adversarial Phase 2 regressions`.
+- Commands: `ruby scripts/test-remove-on-stop.rb` and the local-framework
+  equivalent of `swift test --filter ConfigMigrationTests`.
+- RED result: the Ruby corpus reported **12 runs, 61 assertions, 4 intended
+  failures** for `Process ()`, `NSTask`, C launch primitives, reviewed-file
+  reassignment, and POSIX-locale UTF-8 handling. Swift compilation reached all
+  four file-backed cases and failed only because the injectable config URL API
+  did not exist.
+- GREEN checkpoint:
+  `b581624 fix: close Phase 2 adversarial gaps`.
+- GREEN result: **12 Ruby runs, 81 assertions** in both the default and POSIX
+  locales; **9 tests in `ConfigMigrationTests` passed**; the standalone
+  validator passed in both locales.
+- A fresh adversarial pass then found that taking a launch function as a value
+  could evade call-shaped matching. RED checkpoint
+  `5a87ee6 test: reject aliased launch primitives` reproduced the bypass;
+  GREEN checkpoint `74f0edb fix: reject aliased launch primitives` rejects
+  aliased `NSTask`, `posix_spawn`, `system`, `popen`, `exec*`, and dynamic-loader
+  symbols. The final corpus passes with **13 runs, 105 assertions** in both
+  locales.
+
 ## Implementation report
 
 - `Config.swift` removes `Config.onStop()`, keeps unrelated accessors intact,
@@ -87,9 +111,14 @@ snapshots, LaunchAgent behavior, model provisioning, signing, or storage.
   anything; successful transcription still writes output and notifies.
 - `README.md` removes the active hook example and documents the ignored-key
   migration.
-- `validate-no-shell-hook.rb` rejects retired identifiers, direct or
-  environment-selected shell interpreters, unreviewed `Process` sites, missing
-  executable assignments, and extra executables in reviewed files.
+- `validate-no-shell-hook.rb` reads source as validated UTF-8 and rejects
+  retired identifiers, direct or environment-selected shell interpreters,
+  unreviewed `Process` references, `NSTask`, POSIX/C launch primitives,
+  primitive aliases, dynamic executable assignments, and extra executables in
+  reviewed files.
+- `Config.migrationNotices(at:writeWarning:)` exercises the same file loader as
+  startup with an injected URL and warning sink. Missing, legacy, unrelated,
+  and malformed files are covered without touching the user's config.
 - CI runs both the validator's adversarial contract suite and the standalone
   repository validation before Swift tests.
 
@@ -108,10 +137,14 @@ subprocess requires an explicit validator review.
 | Inspecting migration state does not remove unrelated config values | legacy-key Swift unit fixture | Swift regression unit | PASS |
 | One notice reaches stderr and notification exactly once | `ConfigMigrationTests.reportingEmitsEachNoticeOnceThroughBothChannels` | Swift interaction unit | PASS |
 | Empty notice input has no reporting side effects | `ConfigMigrationTests.reportingNoNoticesEmitsNothing` | Swift negative unit | PASS |
-| Product source has no retired consumer, command interpreter, or unreviewed process | current-tree remove-on-stop contract plus standalone validator | static integration | PASS |
+| Missing, legacy, unrelated, and malformed config files use the expected migration/warning behavior | file-backed temporary config fixtures | Swift filesystem integration | PASS |
+| Product source has no retired consumer, command interpreter, or unreviewed launch primitive | current-tree remove-on-stop contract plus standalone validator | static integration | PASS |
 | Alternate direct and environment-selected interpreters are rejected | temporary adversarial fixtures | negative integration | PASS |
+| Whitespace, constructed paths, `NSTask`, POSIX/C APIs, and aliased launch symbols are rejected | syntactically valid Swift fixture corpus | negative integration | PASS |
 | A second executable cannot hide inside a reviewed process file | reviewed-site bypass fixture | negative integration | PASS |
+| A reviewed process cannot be reassigned a dynamic executable | reviewed-site reassignment fixture | negative integration | PASS |
 | Existing `osascript` and `launchctl` argument-vector sites remain allowed | reviewed process fixture | compatibility contract | PASS |
+| Both security scripts work with `LANG=C LC_ALL=C` | explicit POSIX-locale CI and local runs | environment compatibility | PASS |
 | CI invokes both remove-on-stop checks | workflow contract | CI contract | PASS |
 | Existing config, transcript, clock, metadata, and segmentation tests remain green | complete Swift package suite | regression | PASS — local equivalent |
 
@@ -121,22 +154,24 @@ Final local results:
 
 - `ruby scripts/test-architecture.rb`: **11 runs, 59 assertions, PASS**.
 - `ruby scripts/validate-architecture.rb`: **PASS**.
-- `ruby scripts/test-remove-on-stop.rb`: **8 runs, 50 assertions, PASS**.
-- `ruby scripts/validate-no-shell-hook.rb`: **PASS**.
-- local-framework equivalent of `swift test`: **20 tests in 6 suites, PASS**.
+- `ruby scripts/test-remove-on-stop.rb`: **13 runs, 105 assertions, PASS** in
+  both the default locale and `LANG=C LC_ALL=C`.
+- `ruby scripts/validate-no-shell-hook.rb`: **PASS** in both locales.
+- local-framework equivalent of `swift test`: **24 tests in 6 suites, PASS**.
 - local-framework equivalent of `swift test --enable-code-coverage`:
-  **20 tests in 6 suites, PASS**.
+  **24 tests in 6 suites, PASS**.
 - `swiftc -frontend -parse` for the changed Swift production and test files:
   **PASS**.
 - `git diff --check`: **PASS**.
+- `gitleaks git --log-opts='285fabc..HEAD'`: **12 commits scanned, no leaks**.
 
 `llvm-cov show` reports every executable line in the new pure
-`Config.migrationNotices(in:)` decision and
-`reportConfigMigrationNotices` reporting loop executed. `Config.swift` as a
-whole reports 32.31% line coverage and `Quill.swift` reports 7.22%; those file
-totals include legacy filesystem, CLI, AppKit, and process-lifecycle paths
-outside this phase. No repository-wide 80% claim is made. The newly introduced
-pure migration behavior is fully line-covered.
+`Config.migrationNotices(in:)` decision, the injected file-backed migration
+loader, and the `reportConfigMigrationNotices` reporting loop executed.
+`Config.swift` as a whole reports 48.65% line coverage and `Quill.swift`
+reports 7.22%; those file totals include legacy filesystem, CLI, AppKit, and
+process-lifecycle paths outside this phase. No repository-wide 80% claim is
+made. The behavior introduced for this phase is fully line-covered.
 
 The local command requires Command Line Tools-only framework, interop-library,
 module-cache, and sandbox flags. They are host accommodations, not product or
@@ -145,7 +180,11 @@ macOS 15 with Xcode 16.4 / Swift 6.1.
 
 ## Security scope and known gaps
 
-The relevant unsafe-execution check is fixed and regression-tested. Web-route
+The relevant unsafe-execution check is fixed and regression-tested against
+direct calls, spelling/whitespace changes, dynamic executable assignments, and
+common function-alias indirection. It is a conservative source gate, not a
+general proof against every possible future macOS execution API; adding a new
+launch mechanism still requires validator review. Web-route
 authorization, browser secrets, database row policies, JWT verification,
 CSRF, SSRF, and server caching are not applicable to this local macOS
 executable. Broader dependency, signing, sandbox, TCC, LaunchAgent, model, and
