@@ -67,7 +67,7 @@ class RemoveOnStopContractTest < Minitest::Test
         output, status = run_validator(fixture)
 
         refute status.success?, "#{name} unexpectedly passed:\n#{output}"
-        assert_match(/command interpreter|unreviewed Process site/, output)
+        assert_match(/command interpreter|unreviewed process launch primitive/, output)
       end
     end
   end
@@ -102,7 +102,7 @@ class RemoveOnStopContractTest < Minitest::Test
       output, status = run_validator(fixture)
 
       refute status.success?, output
-      assert_includes output, "unreviewed Process site"
+      assert_includes output, "unreviewed process launch primitive"
     end
   end
 
@@ -120,7 +120,7 @@ class RemoveOnStopContractTest < Minitest::Test
       output, status = run_validator(fixture)
 
       refute status.success?, output
-      assert_includes output, "reviewed Process site contains unapproved executables"
+      assert_includes output, "reviewed Process site contains unapproved executable assignments"
     end
   end
 
@@ -269,6 +269,9 @@ class RemoveOnStopContractTest < Minitest::Test
   end
 
   def read_utf8(path)
-    path.binread.force_encoding(Encoding::UTF_8)
+    source = path.binread.force_encoding(Encoding::UTF_8)
+    raise ArgumentError, "#{path}: source is not valid UTF-8" unless source.valid_encoding?
+
+    source
   end
 end

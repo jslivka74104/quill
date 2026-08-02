@@ -32,7 +32,17 @@ enum Config {
     /// called once by the application startup path, so a legacy key produces
     /// one notice per process launch without changing the later config reads.
     static func migrationNotices() -> [ConfigMigrationNotice] {
-        guard let config = load() else { return [] }
+        migrationNotices(at: path, writeWarning: writeConfigWarning)
+    }
+
+    /// File-backed seam used by package tests to exercise the same loading and
+    /// malformed-config behavior as application startup without touching the
+    /// user's real config file.
+    static func migrationNotices(
+        at configURL: URL,
+        writeWarning: (String) -> Void
+    ) -> [ConfigMigrationNotice] {
+        guard let config = load(from: configURL, writeWarning: writeWarning) else { return [] }
         return migrationNotices(in: config)
     }
 
@@ -78,17 +88,26 @@ enum Config {
     /// than silently ignored — recordings landing in an unexpected place is
     /// worse than a warning.
     private static func load() -> [String: Any]? {
-        guard FileManager.default.fileExists(atPath: path.path) else { return nil }
+        load(from: path, writeWarning: writeConfigWarning)
+    }
+
+    private static func load(
+        from configURL: URL,
+        writeWarning: (String) -> Void
+    ) -> [String: Any]? {
+        guard FileManager.default.fileExists(atPath: configURL.path) else { return nil }
         guard
-            let data = try? Data(contentsOf: path),
+            let data = try? Data(contentsOf: configURL),
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
-            FileHandle.standardError.write(Data(
-                "warning: \(path.path) is not valid JSON — ignoring config\n".utf8
-            ))
+            writeWarning("warning: \(configURL.path) is not valid JSON — ignoring config\n")
             return nil
         }
         return json
+    }
+
+    private static func writeConfigWarning(_ warning: String) {
+        FileHandle.standardError.write(Data(warning.utf8))
     }
 
     /// Resolve the recordings root from an optional CLI override.

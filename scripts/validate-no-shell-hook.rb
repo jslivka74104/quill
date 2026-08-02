@@ -21,11 +21,32 @@ RETIRED_HOOK_PATTERNS = {
   "retired runHook identifier" => /\brunHook\b/
 }.freeze
 
-def process_executables(source)
-  launch_paths = source.scan(/\.launchPath\s*=\s*"([^"]+)"/).flatten
-  executable_urls = source
-    .scan(/\.executableURL\s*=\s*URL\(fileURLWithPath:\s*"([^"]+)"\)/)
+PROCESS_REFERENCE_PATTERN = /\b(?:Foundation\s*\.\s*)?Process\b/
+PROCESS_CONSTRUCTOR_PATTERN = /\b(?:Foundation\s*\.\s*)?Process\s*\(/
+OTHER_LAUNCH_PRIMITIVE_PATTERNS = {
+  "NSTask" => /\bNSTask\s*\(/,
+  "posix_spawn" => /\bposix_spawnp?\s*\(/,
+  "system" => /\bsystem\s*\(/,
+  "popen" => /\bpopen\s*\(/,
+  "exec" => /\bexec(?:v|ve|vp|vP|l|le|lp)\s*\(/,
+  "dynamic loader" => /\bdl(?:open|sym)\s*\(/
+}.freeze
+EXECUTABLE_ASSIGNMENT_PATTERN = /\.(?:launchPath|executableURL)\s*=/
+
+def read_utf8(path)
+  source = Pathname(path).binread.force_encoding(Encoding::UTF_8)
+  raise ArgumentError, "#{path}: source is not valid UTF-8" unless source.valid_encoding?
+
+  source
+end
+
+def literal_process_executables(source)
+  launch_paths = source
+    .scan(/\.launchPath\s*=\s*"([^"]+)"\s*(?=;|\n|\z)/)
     .flatten
+  executable_urls = source.scan(
+    /\.executableURL\s*=\s*URL\s*\(\s*fileURLWithPath:\s*"([^"]+)"\s*\)\s*(?=;|\n|\z)/
+  ).flatten
   launch_paths + executable_urls
 end
 
@@ -37,7 +58,7 @@ end
 failures = []
 sources = Dir[SOURCE_ROOT.join("**", "*.swift").to_s].sort.map do |path|
   relative = Pathname(path).relative_path_from(ROOT).to_s
-  [relative, Pathname(path).read]
+  [relative, read_utf8(path)]
 end
 
 sources.each do |relative, source|
@@ -48,18 +69,28 @@ sources.each do |relative, source|
     failures << "#{relative}: #{description}" if source.match?(pattern)
   end
 
-  next unless source.include?("Process()")
-
   allowed_executable = ALLOWED_PROCESS_SITES[relative]
-  if allowed_executable.nil?
-    failures << "#{relative}: unreviewed Process site"
-  else
-    process_count = source.scan(/\bProcess\(\)/).count
-    executables = process_executables(source)
-    unless executables.count == process_count &&
-           executables.all? { |executable| executable == allowed_executable }
-      failures << "#{relative}: reviewed Process site contains unapproved executables"
+  process_references = source.scan(PROCESS_REFERENCE_PATTERN).count
+  process_count = source.scan(PROCESS_CONSTRUCTOR_PATTERN).count
+  other_primitives = OTHER_LAUNCH_PRIMITIVE_PATTERNS.each_with_object([]) do |(name, pattern), matches|
+    matches << name if source.match?(pattern)
+  end
+
+  if allowed_executable
+    unless other_primitives.empty?
+      failures << "#{relative}: reviewed Process site contains unapproved launch primitives"
     end
+
+    assignment_count = source.scan(EXECUTABLE_ASSIGNMENT_PATTERN).count
+    executables = literal_process_executables(source)
+    unless process_count == 1 &&
+           process_references == process_count &&
+           assignment_count == 1 &&
+           executables == [allowed_executable]
+      failures << "#{relative}: reviewed Process site contains unapproved executable assignments"
+    end
+  elsif process_references.positive? || !other_primitives.empty?
+    failures << "#{relative}: unreviewed process launch primitive"
   end
 end
 
@@ -67,7 +98,8 @@ ALLOWED_PROCESS_SITES.each do |relative, executable|
   source = sources.assoc(relative)&.last
   if source.nil?
     failures << "#{relative}: reviewed Process site is missing"
-  elsif !source.include?("Process()") || !source.include?(%("#{executable}"))
+  elsif source.scan(PROCESS_CONSTRUCTOR_PATTERN).count != 1 ||
+        literal_process_executables(source) != [executable]
     failures << "#{relative}: reviewed Process site does not match its allowlist"
   end
 end
