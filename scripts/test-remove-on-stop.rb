@@ -185,6 +185,30 @@ class RemoveOnStopContractTest < Minitest::Test
     end
   end
 
+  def test_validator_rejects_aliased_launch_primitives
+    probes = {
+      "NSTask alias" => "import Foundation\nlet launcher = NSTask.self\n",
+      "posix_spawn alias" => "import Darwin\nlet launcher = posix_spawn\n",
+      "system alias" => "import Darwin\nlet launcher = system\n",
+      "popen alias" => "import Darwin\nlet launcher = popen\n",
+      "exec alias" => "import Darwin\nlet launcher = execvp\n",
+      "dynamic loader alias" => "import Darwin\nlet launcher = dlsym\n",
+    }
+
+    probes.each do |name, source|
+      with_fixture do |fixture|
+        write_reviewed_process_sites(fixture)
+        path = write_source(fixture, "Sources/quill/Alias.swift", source)
+        assert_swift_parses(path)
+
+        output, status = run_validator(fixture)
+
+        refute status.success?, "#{name} unexpectedly passed:\n#{output}"
+        assert_includes output, "unreviewed process launch primitive"
+      end
+    end
+  end
+
   def test_validator_rejects_dynamic_reassignment_in_a_reviewed_process_site
     with_fixture do |fixture|
       write_reviewed_process_sites(fixture)
