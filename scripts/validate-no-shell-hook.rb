@@ -24,12 +24,12 @@ RETIRED_HOOK_PATTERNS = {
 PROCESS_REFERENCE_PATTERN = /\b(?:Foundation\s*\.\s*)?Process\b/
 PROCESS_CONSTRUCTOR_PATTERN = /\b(?:Foundation\s*\.\s*)?Process\s*\(/
 OTHER_LAUNCH_PRIMITIVE_PATTERNS = {
-  "NSTask" => /\bNSTask\s*\(/,
-  "posix_spawn" => /\bposix_spawnp?\s*\(/,
-  "system" => /\bsystem\s*\(/,
-  "popen" => /\bpopen\s*\(/,
-  "exec" => /\bexec(?:v|ve|vp|vP|l|le|lp)\s*\(/,
-  "dynamic loader" => /\bdl(?:open|sym)\s*\(/
+  "NSTask" => /\bNSTask\b/,
+  "posix_spawn" => /\bposix_spawnp?\b/,
+  "system" => /\b(?:Darwin\s*\.\s*)?system\s*\(/,
+  "popen" => /\bpopen\b/,
+  "exec" => /\bexec(?:v|ve|vp|vP|l|le|lp)\b/,
+  "dynamic loader" => /\bdl(?:open|sym)\b/
 }.freeze
 EXECUTABLE_ASSIGNMENT_PATTERN = /\.(?:launchPath|executableURL)\s*=/
 
@@ -74,6 +74,9 @@ sources.each do |relative, source|
   process_count = source.scan(PROCESS_CONSTRUCTOR_PATTERN).count
   other_primitives = OTHER_LAUNCH_PRIMITIVE_PATTERNS.each_with_object([]) do |(name, pattern), matches|
     matches << name if source.match?(pattern)
+  end
+  if source.match?(/^\s*import\s+Darwin\b/) && source.match?(/\bsystem\b/)
+    other_primitives << "system"
   end
 
   if allowed_executable
