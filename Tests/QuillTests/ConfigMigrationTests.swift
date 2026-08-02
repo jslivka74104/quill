@@ -3,6 +3,57 @@ import Testing
 @testable import quill
 
 struct ConfigMigrationTests {
+    @Test func missingConfigFileProducesNoNoticeOrWarning() throws {
+        try withTemporaryConfigURL { configURL in
+            var warnings: [String] = []
+
+            let notices = Config.migrationNotices(at: configURL) { warnings.append($0) }
+
+            #expect(notices.isEmpty)
+            #expect(warnings.isEmpty)
+        }
+    }
+
+    @Test func fileBackedLegacyConfigProducesExactlyOneNotice() throws {
+        try withTemporaryConfigURL { configURL in
+            try Data(#"{"recordings_dir":"/keep-me","on_stop":"do-not-print"}"#.utf8)
+                .write(to: configURL)
+            var warnings: [String] = []
+
+            let notices = Config.migrationNotices(at: configURL) { warnings.append($0) }
+
+            #expect(notices.count == 1)
+            #expect(!notices[0].message.contains("do-not-print"))
+            #expect(warnings.isEmpty)
+        }
+    }
+
+    @Test func fileBackedUnrelatedConfigProducesNoNotice() throws {
+        try withTemporaryConfigURL { configURL in
+            try Data(#"{"recordings_dir":"/keep-me"}"#.utf8).write(to: configURL)
+            var warnings: [String] = []
+
+            let notices = Config.migrationNotices(at: configURL) { warnings.append($0) }
+
+            #expect(notices.isEmpty)
+            #expect(warnings.isEmpty)
+        }
+    }
+
+    @Test func malformedFileBackedConfigPreservesTheExistingWarning() throws {
+        try withTemporaryConfigURL { configURL in
+            try Data("not-json".utf8).write(to: configURL)
+            var warnings: [String] = []
+
+            let notices = Config.migrationNotices(at: configURL) { warnings.append($0) }
+
+            #expect(notices.isEmpty)
+            #expect(warnings == [
+                "warning: \(configURL.path) is not valid JSON — ignoring config\n",
+            ])
+        }
+    }
+
     @Test func legacyOnStopKeyProducesAnActionableNoticeWithoutLeakingItsValue() {
         let secretCommand = "upload --token do-not-print"
         let config: [String: Any] = [
@@ -69,5 +120,18 @@ struct ConfigMigrationTests {
 
         #expect(warningCount == 0)
         #expect(notificationCount == 0)
+    }
+
+    private func withTemporaryConfigURL(
+        _ body: (URL) throws -> Void
+    ) throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try body(directory.appendingPathComponent("config.json"))
     }
 }

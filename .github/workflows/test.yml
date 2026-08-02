@@ -33,7 +33,9 @@ jobs:
         run: ruby scripts/validate-architecture.rb
 
       - name: Test remove-on-stop security contract
-        run: ruby scripts/test-remove-on-stop.rb
+        run: |
+          ruby scripts/test-remove-on-stop.rb
+          env LANG=C LC_ALL=C ruby scripts/test-remove-on-stop.rb
 
       - name: Validate no shell hook remains
         run: ruby scripts/validate-no-shell-hook.rb

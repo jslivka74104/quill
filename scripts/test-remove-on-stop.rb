@@ -13,8 +13,8 @@ VALIDATOR = ROOT.join("scripts", "validate-no-shell-hook.rb")
 
 class RemoveOnStopContractTest < Minitest::Test
   def test_product_exposes_one_actionable_migration_notice_path
-    config = ROOT.join("Sources", "quill", "Config.swift").read
-    application = ROOT.join("Sources", "quill", "Quill.swift").read
+    config = read_utf8(ROOT.join("Sources", "quill", "Config.swift"))
+    application = read_utf8(ROOT.join("Sources", "quill", "Quill.swift"))
 
     assert_includes config, "static func migrationNotices(in config:"
     assert_includes config, 'config.keys.contains("on_stop")'
@@ -124,17 +124,105 @@ class RemoveOnStopContractTest < Minitest::Test
     end
   end
 
+  def test_validator_rejects_whitespace_and_constructed_process_bypass
+    with_fixture do |fixture|
+      write_reviewed_process_sites(fixture)
+      source = <<~SWIFT
+        import Foundation
+        let task = Process ()
+        task.launchPath = "/bin/" + "sh"
+      SWIFT
+      path = write_source(fixture, "Sources/quill/WhitespaceBypass.swift", source)
+      assert_swift_parses(path)
+
+      output, status = run_validator(fixture)
+
+      refute status.success?, output
+      assert_includes output, "unreviewed process launch primitive"
+    end
+  end
+
+  def test_validator_rejects_nstask_and_c_launch_primitives
+    probes = {
+      "NSTask" => <<~SWIFT,
+        import Foundation
+        let task = NSTask()
+        task.launchPath = "/bin/csh"
+      SWIFT
+      "posix_spawn" => <<~SWIFT,
+        import Darwin
+        var processIdentifier: pid_t = 0
+        _ = posix_spawn(&processIdentifier, "/usr/bin/true", nil, nil, nil, nil)
+      SWIFT
+      "system" => <<~SWIFT,
+        import Darwin
+        let executable = String(decoding: [47, 98, 105, 110, 47, 115, 104], as: UTF8.self)
+        executable.withCString { _ = system($0) }
+      SWIFT
+      "popen" => <<~SWIFT,
+        import Darwin
+        let executable = String(decoding: [47, 98, 105, 110, 47, 115, 104], as: UTF8.self)
+        executable.withCString { _ = popen($0, "r") }
+      SWIFT
+      "execvp" => <<~SWIFT,
+        import Darwin
+        let executable = String(decoding: [47, 98, 105, 110, 47, 115, 104], as: UTF8.self)
+        executable.withCString { _ = execvp($0, nil) }
+      SWIFT
+    }
+
+    probes.each do |name, source|
+      with_fixture do |fixture|
+        write_reviewed_process_sites(fixture)
+        path = write_source(fixture, "Sources/quill/#{name}.swift", source)
+        assert_swift_parses(path)
+
+        output, status = run_validator(fixture)
+
+        refute status.success?, "#{name} unexpectedly passed:\n#{output}"
+        assert_includes output, "unreviewed process launch primitive"
+      end
+    end
+  end
+
+  def test_validator_rejects_dynamic_reassignment_in_a_reviewed_process_site
+    with_fixture do |fixture|
+      write_reviewed_process_sites(fixture)
+      source = <<~SWIFT
+        import Foundation
+        let notification = Process()
+        notification.launchPath = "/usr/bin/osascript"
+        notification.launchPath = "/bin/" + "sh"
+      SWIFT
+      path = write_source(fixture, "Sources/quill/Notify.swift", source)
+      assert_swift_parses(path)
+
+      output, status = run_validator(fixture)
+
+      refute status.success?, output
+      assert_includes output, "reviewed Process site contains unapproved executable assignments"
+    end
+  end
+
+  def test_validator_runs_under_the_posix_locale
+    output, status = run_validator(ROOT, { "LANG" => "C", "LC_ALL" => "C" })
+
+    assert status.success?, output
+  end
+
   def test_ci_runs_remove_on_stop_contract_and_validator
-    workflow = ROOT.join(".github", "workflows", "test.yml").read
+    workflow = read_utf8(ROOT.join(".github", "workflows", "test.yml"))
 
     assert_includes workflow, "ruby scripts/test-remove-on-stop.rb"
+    assert_includes workflow, "env LANG=C LC_ALL=C ruby scripts/test-remove-on-stop.rb"
     assert_includes workflow, "ruby scripts/validate-no-shell-hook.rb"
   end
 
   private
 
-  def run_validator(root)
+  def run_validator(root, environment = {})
     stdout, stderr, status = Open3.capture3(
+      environment,
       RbConfig.ruby,
       VALIDATOR.to_s,
       root.to_s
@@ -167,5 +255,20 @@ class RemoveOnStopContractTest < Minitest::Test
     path = root.join(relative)
     FileUtils.mkdir_p(path.dirname)
     path.write(contents)
+    path
+  end
+
+  def assert_swift_parses(path)
+    stdout, stderr, status = Open3.capture3(
+      "swiftc",
+      "-frontend",
+      "-parse",
+      path.to_s
+    )
+    assert status.success?, "invalid Swift fixture #{path}:\n#{stdout}#{stderr}"
+  end
+
+  def read_utf8(path)
+    path.binread.force_encoding(Encoding::UTF_8)
   end
 end
