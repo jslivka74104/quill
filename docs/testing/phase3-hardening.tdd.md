@@ -22,6 +22,11 @@ architecture gates independent of Ruby's ambient external encoding.
 - GREEN `59cbeb4` (`fix: close phase 3 hardening gaps`) passed the focused
   transcript test, both security validators, and the Ruby suites in default,
   POSIX, unset-locale, and forced-US-ASCII environments.
+- Follow-up RED `6671b36` (`test: expose transcription log permissions`)
+  reproduced `transcribe.log` creation through the real unreadable-manifest
+  recovery path and observed a non-private mode. GREEN `08a210c` (`fix: secure
+  transcription diagnostics`) moved append logging to private atomic
+  replacement and passed both transcription-recovery tests.
 - The first full parallel Swift run then exposed scheduler-sensitive timing in
   the main-actor responsiveness assertion. Test-only checkpoint `332d862`
   (`test: stabilize recording responsiveness timing`) widened the blocking
@@ -30,8 +35,10 @@ architecture gates independent of Ruby's ambient external encoding.
 
 ## Result
 
-- `transcript.json` and `transcript.md` use the existing private atomic writer;
-  both are atomically replaced and verified at `0600`.
+- `transcript.json`, `transcript.md`, and `transcribe.log` use the existing
+  private atomic writer; all are atomically replaced and verified at `0600`.
+  Existing log files must be regular, non-symlink files before their contents
+  are carried into a replacement.
 - The retired-hook validator rejects direct `system` calls, Darwin module
   aliases, `import func Darwin.system`, and `@_silgen_name("system")` bindings
   while preserving Quill's legitimate `.system` track-role vocabulary.
@@ -45,9 +52,8 @@ architecture gates independent of Ruby's ambient external encoding.
 ## Final local verification
 
 - Production build: **PASS**.
-- Full Swift suite: **43 tests in 9 suites, PASS**, twice consecutively after
-  timing stabilization.
-- Coverage-instrumented Swift suite: **43 tests in 9 suites, PASS**.
+- Full Swift suite: **44 tests in 9 suites, PASS**.
+- Coverage-instrumented Swift suite: **44 tests in 9 suites, PASS**.
 - Architecture contract suite: **13 runs, 64 assertions, PASS** under default,
   POSIX, unset-locale, and forced-US-ASCII checks.
 - Architecture schema/link validator: **PASS** under default and unset locale.
@@ -56,14 +62,14 @@ architecture gates independent of Ruby's ambient external encoding.
 - Retired-hook validator: **PASS** under default and POSIX locales.
 - Swift parser check across all Phase 3 changed Swift files: **PASS**.
 - `git diff --check`: **PASS**.
-- Gitleaks: **54 commits scanned, no findings**; the final uncommitted evidence
-  diff was also scanned with no findings.
+- Gitleaks: **full history scanned, no findings**; the testing-evidence
+  directory was also scanned with no findings.
 
 Coverage reports 83.94% for `RecordingSession.swift`, 85.71% for
 `RecordingRootPreflight.swift`, and 91.47% for `SessionLifecycle.swift`, or
 86.47% combined across those three lifecycle core files. Every executable line
 in the remediated `Transcript.write(to:)` path ran. Repository-wide source line
-coverage is 50.56%; no repository-wide 80% claim is made.
+coverage is 50.94%; no repository-wide 80% claim is made.
 
 Local Swift execution used the documented Command Line Tools compatibility
 framework, writable module caches, disabled SwiftPM sandbox, and the installed
