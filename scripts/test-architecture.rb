@@ -115,7 +115,7 @@ class ArchitectureContractTest < Minitest::Test
   end
 
   def test_phase_zero_defers_measurement_gates_without_blocking_test_foundation
-    baseline = ARCH.join("phase-0-baseline.md").read
+    baseline = read_utf8(ARCH.join("phase-0-baseline.md"))
 
     assert_includes baseline, "Status: **Accepted — Phase 0 complete**"
     assert_includes baseline, "deferred to the foundation boundary"
@@ -135,22 +135,22 @@ class ArchitectureContractTest < Minitest::Test
 
   def test_adrs_record_owner_acceptance_without_clearing_adr_0004_for_production
     REQUIRED_ADRS.first(3).each do |name|
-      assert_includes ARCH.join("adr", name).read, "Status: **Accepted**"
+      assert_includes read_utf8(ARCH.join("adr", name)), "Status: **Accepted**"
     end
 
-    model_adr = ARCH.join("adr", REQUIRED_ADRS.last).read
+    model_adr = read_utf8(ARCH.join("adr", REQUIRED_ADRS.last))
     assert_includes model_adr, "Status: **Accepted — Option C conditionally selected"
     assert_includes model_adr, "It does not clear Option C for production use."
   end
 
   def test_phase_one_evidence_does_not_deny_its_recorded_remote_runs
-    evidence = ROOT.join("docs", "testing", "test-foundation.tdd.md").read
+    evidence = read_utf8(ROOT.join("docs", "testing", "test-foundation.tdd.md"))
 
     refute_includes evidence, "A remote GitHub Actions result cannot exist"
   end
 
   def test_ci_enforces_architecture_and_swift_tests
-    workflow = ROOT.join(".github", "workflows", "test.yml").read
+    workflow = read_utf8(ROOT.join(".github", "workflows", "test.yml"))
 
     assert_includes workflow, "ruby scripts/test-architecture.rb"
     assert_includes workflow, "ruby scripts/validate-architecture.rb"
@@ -158,7 +158,7 @@ class ArchitectureContractTest < Minitest::Test
   end
 
   def test_parakeet_segmentation_is_accessible_to_package_tests
-    source = ROOT.join("Sources", "quill", "Transcription", "ParakeetEngine.swift").read
+    source = read_utf8(ROOT.join("Sources", "quill", "Transcription", "ParakeetEngine.swift"))
 
     refute_includes source, "private static func segments"
     assert_includes source, "static func segments"
@@ -180,7 +180,10 @@ class ArchitectureContractTest < Minitest::Test
   private
 
   def read_utf8(path)
-    path.read(encoding: Encoding::UTF_8)
+    source = Pathname(path).binread.force_encoding(Encoding::UTF_8)
+    raise ArgumentError, "#{path}: source is not valid UTF-8" unless source.valid_encoding?
+
+    source
   end
 
   def assert_nullable(fragment)
@@ -193,11 +196,11 @@ class ArchitectureContractTest < Minitest::Test
   end
 
   def read_schema(name)
-    JSON.parse(ARCH.join("schemas", name).read)
+    JSON.parse(read_utf8(ARCH.join("schemas", name)))
   end
 
   def remove_lines_containing(path, needle)
-    path.write(path.readlines.reject { |line| line.include?(needle) }.join)
+    path.binwrite(read_utf8(path).lines.reject { |line| line.include?(needle) }.join)
   end
 
   def run_validator(probe, environment = {})

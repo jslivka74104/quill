@@ -29,8 +29,10 @@ OTHER_LAUNCH_PRIMITIVE_PATTERNS = {
   "system" => /\b(?:Darwin\s*\.\s*)?system\s*\(/,
   "popen" => /\bpopen\b/,
   "exec" => /\bexec(?:v|ve|vp|vP|l|le|lp)\b/,
-  "dynamic loader" => /\bdl(?:open|sym)\b/
+  "dynamic loader" => /\bdl(?:open|sym)\b/,
+  "system symbol binding" => /@_silgen_name\s*\(\s*["']system["']\s*\)/
 }.freeze
+SYSTEM_FUNCTION_IMPORT_PATTERN = /^\s*import\s+func\s+Darwin\s*\.\s*system\b/
 EXECUTABLE_ASSIGNMENT_PATTERN = /\.(?:launchPath|executableURL)\s*=/
 
 def read_utf8(path)
@@ -75,7 +77,8 @@ sources.each do |relative, source|
   other_primitives = OTHER_LAUNCH_PRIMITIVE_PATTERNS.each_with_object([]) do |(name, pattern), matches|
     matches << name if source.match?(pattern)
   end
-  if source.match?(/^\s*import\s+Darwin\b/) && source.match?(/\bsystem\b/)
+  if source.match?(SYSTEM_FUNCTION_IMPORT_PATTERN) ||
+     (source.match?(/^\s*import\s+Darwin\b/) && source.match?(/\bsystem\b/))
     other_primitives << "system"
   end
 

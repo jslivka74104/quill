@@ -291,15 +291,20 @@ struct Transcript: Codable {
     let segments: [Segment]
 
     /// Write transcript.json and render transcript.md. Both writes are atomic
-    /// (temp file + rename), so a partially written transcript never exists on
-    /// disk — resumePending treats presence of transcript.json as "done".
+    /// private-file replacements, so partial or group/world-readable transcript
+    /// artifacts never exist on disk. resumePending treats presence of
+    /// transcript.json as "done".
     func write(to dir: URL) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(self)
-            .write(to: dir.appendingPathComponent("transcript.json"), options: .atomic)
-        try Data(rendered(title: dir.lastPathComponent).utf8)
-            .write(to: dir.appendingPathComponent("transcript.md"), options: .atomic)
+        try AtomicFileWriter.production.write(
+            encoder.encode(self),
+            to: dir.appendingPathComponent("transcript.json")
+        )
+        try AtomicFileWriter.production.write(
+            Data(rendered(title: dir.lastPathComponent).utf8),
+            to: dir.appendingPathComponent("transcript.md")
+        )
     }
 
     private func rendered(title: String) -> String {

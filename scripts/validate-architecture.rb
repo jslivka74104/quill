@@ -7,6 +7,13 @@ require "pathname"
 ROOT = Pathname(__dir__).parent
 ARCH = ROOT.join("docs", "architecture")
 
+def read_utf8(path)
+  source = Pathname(path).binread.force_encoding(Encoding::UTF_8)
+  raise ArgumentError, "#{path}: source is not valid UTF-8" unless source.valid_encoding?
+
+  source
+end
+
 required_adrs = [
   "0001-single-application-process.md",
   "0002-folder-authority-and-sqlite-index.md",
@@ -45,7 +52,7 @@ end
 
 schema_files = required_schemas.map(&:to_s)
 schema_files.each do |path|
-  schema = JSON.parse(File.read(path))
+  schema = JSON.parse(read_utf8(path))
   refs = []
 
   walk = lambda do |value|
@@ -70,7 +77,7 @@ end
 
 markdown_errors = []
 Dir[ARCH.join("**", "*.md").to_s].each do |path|
-  File.read(path).scan(/\[[^\]]+\]\(([^)#]+)(?:#[^)]+)?\)/).flatten.each do |target|
+  read_utf8(path).scan(/\[[^\]]+\]\(([^)#]+)(?:#[^)]+)?\)/).flatten.each do |target|
     next if target.match?(%r{\A(?:https?|mailto):})
 
     resolved = Pathname(path).dirname.join(target).cleanpath
@@ -83,7 +90,7 @@ end
 
 pr_reference = /PR #[0-9]+|pull request #[0-9]+/
 references = Dir[ARCH.join("**", "*.md").to_s].select do |path|
-  File.read(path).match?(pr_reference)
+  read_utf8(path).match?(pr_reference)
 end
 unless references.empty?
   abort "Speculative PR references found in:\n#{references.map { |path| "- #{path}" }.join("\n")}"

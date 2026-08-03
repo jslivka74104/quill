@@ -1,6 +1,6 @@
 # Quill v2 Architecture Baseline
 
-Status: **Proposed**
+Status: **Accepted**
 Date: 2026-07-29
 Scope: architecture and contracts only; no feature implementation or data migration
 

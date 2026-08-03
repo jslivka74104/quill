@@ -1,7 +1,7 @@
 # `remove-on-stop` TDD evidence
 
 Date: 2026-08-02
-Status: **Local GREEN; pinned Xcode 16.4 CI pending an authorized push**
+Status: **Local GREEN; pinned Xcode 16.4 CI GREEN**
 
 ## Source and scope
 
@@ -164,6 +164,8 @@ Final local results:
   **PASS**.
 - `git diff --check`: **PASS**.
 - `gitleaks git --log-opts='285fabc..HEAD'`: **12 commits scanned, no leaks**.
+- GitHub Actions run `30772479939` at commit `1d9d991`: **PASS** on the pinned
+  macOS 15 / Xcode 16.4 lane.
 
 `llvm-cov show` reports every executable line in the new pure
 `Config.migrationNotices(in:)` decision, the injected file-backed migration
@@ -193,5 +195,5 @@ expanded into Phase 2.
 
 Tests inject warning and notification sinks; they do not display a real macOS
 notification. The existing notification process site remains statically
-allowlisted. Pinned branch-tip CI is the remaining Phase 2 completion gate and
-cannot be recorded until a push is explicitly authorized and its run finishes.
+allowlisted. The pinned Phase 2 CI gate completed successfully in GitHub
+Actions run `30772479939` at commit `1d9d991`.

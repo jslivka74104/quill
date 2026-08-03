@@ -115,8 +115,9 @@ recorder health redesign remain Phase 4 work.
 - Coverage-instrumented full suite: **35 tests in 8 suites passed**.
 - Ruby stop/security regression suite, default and POSIX locales: **13 runs,
   105 assertions, 0 failures** in each locale.
-- Ruby architecture suite: **11 runs, 59 assertions, 0 failures**.
-- Architecture schema/link validator: pass.
+- Ruby architecture suite under an explicit UTF-8 locale: **11 runs,
+  59 assertions, 0 failures**.
+- Architecture schema/link validator under an explicit UTF-8 locale: pass.
 - Retired-hook/command-interpreter validator, default and POSIX locales: pass.
 - Swift parser check for every changed production and test source: pass.
 - Whitespace/error-marker check across the phase range: pass.

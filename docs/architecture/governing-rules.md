@@ -1,6 +1,6 @@
 # Quill governing engineering rules
 
-Status: **Proposed for Phase 0 acceptance**
+Status: **Accepted**
 Date: 2026-07-31
 
 These rules apply to every Quill change after the architecture baseline. They
