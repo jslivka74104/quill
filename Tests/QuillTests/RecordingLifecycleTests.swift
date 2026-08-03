@@ -47,7 +47,11 @@ struct RecordingLifecycleTests {
         try session.start()
 
         #expect(recorderStartCount == 1)
-        #expect(try readManifest(in: session.dir).state == .recording)
+        let manifest = try readManifest(in: session.dir)
+        #expect(manifest.state == .recording)
+        assertTrackContract(manifest)
+        #expect(manifest.tracks.map(\.captureStatus) == [.recording])
+        #expect(manifest.tracks.map(\.startOffsetMs) == [0])
     }
 
     @Test func noLiveRecorderWritesObservedTypedFailure() throws {
@@ -77,7 +81,43 @@ struct RecordingLifecycleTests {
         #expect(manifest.state == .failed)
         #expect(manifest.failure?.code == "no_live_tracks")
         #expect(manifest.failure?.phase == .starting)
-        #expect(manifest.tracks.allSatisfy { $0.failure != nil })
+        assertTrackContract(manifest)
+        #expect(manifest.tracks.map(\.captureStatus) == [.missing, .missing])
+        #expect(manifest.tracks.map { $0.failure?.code } == [
+            "system_audio_start_failed",
+            "microphone_start_failed",
+        ])
+    }
+
+    @Test func destinationSecurityFailureHasSpecificTrackCode() throws {
+        let root = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let unsafeDestination = RecordingTrackDriver(
+            trackID: "system",
+            role: .system,
+            criticality: .primary,
+            relativePath: "missing-parent/system.caf",
+            startFailureCode: "system_audio_start_failed",
+            start: { _ in Issue.record("recorder must not start with an unsecured destination") },
+            stop: {},
+            firstSampleAt: { nil }
+        )
+        let session = try RecordingSession(
+            root: root,
+            dependencies: dependencies(recorders: [unsafeDestination])
+        )
+
+        _ = try #require(throws: RecordingSessionError.self) {
+            try session.start()
+        }
+
+        let manifest = try readManifest(in: session.dir)
+        #expect(manifest.state == .failed)
+        assertTrackContract(manifest)
+        #expect(manifest.tracks.map { $0.failure?.code } == [
+            "track_destination_security_failed"
+        ])
     }
 
     @Test(arguments: [SessionLifecycleState.starting, .recording])
@@ -113,7 +153,13 @@ struct RecordingLifecycleTests {
         let manifest = try readManifest(in: session.dir)
         #expect(manifest.state == .interrupted)
         #expect(manifest.failure == nil)
-        #expect(manifest.tracks.compactMap(\.failure) == preservedTrackFailures)
+        assertTrackContract(manifest)
+        #expect(manifest.tracks.allSatisfy { $0.captureStatus != .pending })
+        #expect(manifest.tracks.allSatisfy { $0.captureStatus != .recording })
+        #expect(manifest.tracks.filter { $0.failure?.code != "process_terminated_unexpectedly" }
+            .compactMap(\.failure) == preservedTrackFailures)
+        #expect(manifest.tracks.filter { $0.captureStatus == .interrupted }
+            .allSatisfy { $0.failure?.code == "process_terminated_unexpectedly" })
         #expect(try !SessionTranscriptionEligibility.allowsTranscription(in: session.dir))
     }
 
@@ -125,10 +171,16 @@ struct RecordingLifecycleTests {
         let recorders = [
             RecordingTrackDriver.fixtureSystem(
                 firstSampleAt: { fixedDate },
+                start: { destination in
+                    try Data("system-evidence".utf8).write(to: destination)
+                },
                 stop: { stoppedTracks.append("system") }
             ),
             RecordingTrackDriver.fixtureMicrophone(
                 firstSampleAt: { fixedDate.addingTimeInterval(0.025) },
+                start: { destination in
+                    try Data("microphone-evidence".utf8).write(to: destination)
+                },
                 stop: { stoppedTracks.append("microphone") }
             ),
         ]
@@ -146,8 +198,43 @@ struct RecordingLifecycleTests {
         let manifest = try readManifest(in: session.dir)
         #expect(manifest.state == .complete)
         #expect(manifest.failure == nil)
+        assertTrackContract(manifest)
+        #expect(manifest.tracks.map(\.captureStatus) == [.complete, .complete])
+        #expect(manifest.tracks.map(\.startOffsetMs) == [0, 25])
+        #expect(manifest.tracks.map(\.durationMs) == [nil, nil])
+        #expect(manifest.tracks.map(\.byteCount) == [15, 19])
         #expect(FileManager.default.fileExists(atPath: session.dir.appendingPathComponent("meta.json").path))
         #expect(try SessionTranscriptionEligibility.allowsTranscription(in: session.dir))
+    }
+
+    @Test func throwingRecorderStopPersistsOnlyTerminalTrackStates() throws {
+        let root = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let recorder = RecordingTrackDriver.fixtureSystem(
+            firstSampleAt: { fixedDate },
+            start: { destination in
+                try Data("intact-evidence".utf8).write(to: destination)
+            },
+            stop: { throw FixtureFailure.finalization }
+        )
+        let session = try RecordingSession(
+            root: root,
+            dependencies: dependencies(recorders: [recorder])
+        )
+        try session.start()
+
+        let error = try #require(throws: RecordingSessionError.self) {
+            try session.stop()
+        }
+
+        #expect(error.phase == .finalization)
+        let manifest = try readManifest(in: session.dir)
+        #expect(manifest.state == .failed)
+        #expect(manifest.failure?.code == "recorder_finalization_failed")
+        assertTrackContract(manifest)
+        #expect(manifest.tracks.map(\.captureStatus) == [.complete])
+        #expect(manifest.tracks.map(\.byteCount) == [15])
     }
 
     @Test func terminalPersistenceFailureIsSpecificAndLeavesRecoverableState() throws {
@@ -175,7 +262,9 @@ struct RecordingLifecycleTests {
         }
 
         #expect(error.phase == .terminalPersistence)
-        #expect(try readManifest(in: session.dir).state == .recording)
+        let recording = try readManifest(in: session.dir)
+        #expect(recording.state == .recording)
+        assertTrackContract(recording)
         #expect(try !SessionTranscriptionEligibility.allowsTranscription(in: session.dir))
     }
 
@@ -232,7 +321,9 @@ struct RecordingLifecycleTests {
             try session.start()
         }
         #expect(error.phase == .terminalPersistence)
-        #expect(try readManifest(in: session.dir).state == .starting)
+        let starting = try readManifest(in: session.dir)
+        #expect(starting.state == .starting)
+        assertTrackContract(starting)
 
         _ = try SessionLifecycleRecovery(
             now: { fixedDate.addingTimeInterval(10) },
@@ -241,6 +332,7 @@ struct RecordingLifecycleTests {
         let recovered = try readManifest(in: session.dir)
         #expect(recovered.state == .interrupted)
         #expect(recovered.failure == nil)
+        assertTrackContract(recovered)
     }
 
     @Test func terminalManifestRemainsByteImmutable() throws {
@@ -261,6 +353,7 @@ struct RecordingLifecycleTests {
         _ = try #require(throws: RecordingSessionError.self) {
             try session.stop()
         }
+        assertTrackContract(try readManifest(in: session.dir))
         let recovered = try SessionLifecycleRecovery(
             now: { fixedDate.addingTimeInterval(10) },
             atomicWriter: .production
@@ -297,14 +390,18 @@ struct RecordingLifecycleTests {
         let manifestURL = directory.appendingPathComponent("session.json")
         if let expectedState = expectation.persistedState {
             #expect(FileManager.default.fileExists(atPath: manifestURL.path))
-            #expect(try readManifest(in: directory).state == expectedState)
+            let persisted = try readManifest(in: directory)
+            #expect(persisted.state == expectedState)
+            assertTrackContract(persisted)
 
             if expectedState == .starting || expectedState == .recording {
                 _ = try SessionLifecycleRecovery(
                     now: { fixedDate.addingTimeInterval(10) },
                     atomicWriter: .production
                 ).recover(in: root)
-                #expect(try readManifest(in: directory).state == .interrupted)
+                let interrupted = try readManifest(in: directory)
+                #expect(interrupted.state == .interrupted)
+                assertTrackContract(interrupted)
             }
         } else {
             #expect(!FileManager.default.fileExists(atPath: manifestURL.path))
@@ -337,6 +434,7 @@ struct RecordingLifecycleTests {
         case initialWrite
         case failedWrite
         case terminalWrite
+        case finalization
     }
 
     private func dependencies(
@@ -375,6 +473,28 @@ struct RecordingLifecycleTests {
     private func posixMode(of url: URL) throws -> Int {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         return try #require(attributes[.posixPermissions] as? Int)
+    }
+
+    private func assertTrackContract(
+        _ manifest: SessionManifest,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) {
+        for track in manifest.tracks {
+            switch track.captureStatus {
+            case .pending, .recording, .complete:
+                #expect(track.failure == nil, sourceLocation: sourceLocation)
+            case .degraded, .interrupted, .missing, .invalid:
+                #expect(track.failure != nil, sourceLocation: sourceLocation)
+            }
+        }
+        if manifest.state.isTerminal {
+            #expect(
+                manifest.tracks.allSatisfy {
+                    $0.captureStatus != .pending && $0.captureStatus != .recording
+                },
+                sourceLocation: sourceLocation
+            )
+        }
     }
 }
 
