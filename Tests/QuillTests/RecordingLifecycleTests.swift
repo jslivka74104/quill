@@ -219,9 +219,18 @@ struct RecordingLifecycleTests {
         let root = try makeTemporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
 
+        let recorderEntered = DispatchSemaphore(value: 0)
+        let allowRecorderReturn = DispatchSemaphore(value: 0)
+        let recorderReturned = DispatchSemaphore(value: 0)
+        defer { allowRecorderReturn.signal() }
+
         let recorder = RecordingTrackDriver.fixtureSystem(
             firstSampleAt: { fixedDate },
-            start: { _ in Thread.sleep(forTimeInterval: 0.2) }
+            start: { _ in
+                recorderEntered.signal()
+                allowRecorderReturn.wait()
+                recorderReturned.signal()
+            }
         )
         let controller = RecordingSessionController(
             root: root,
@@ -229,22 +238,21 @@ struct RecordingLifecycleTests {
                 now: Date.init,
                 preflight: .fixturePassing,
                 recorders: [recorder],
-                transitionTimeout: 0.4,
+                transitionTimeout: 5,
                 pollInterval: 0.001
             )
         )
 
-        let started = ProcessInfo.processInfo.systemUptime
         let startTask = Task { try await controller.start() }
-        let heartbeatTask = Task { @MainActor in
-            try await Task.sleep(for: .milliseconds(20))
-            return ProcessInfo.processInfo.systemUptime - started
-        }
-        let heartbeatElapsed = try await heartbeatTask.value
+        #expect(recorderEntered.wait(timeout: .now() + 5) == .success)
 
-        #expect(heartbeatElapsed < 0.12)
+        await Task { @MainActor in }.value
+        #expect(recorderReturned.wait(timeout: .now()) == .timedOut)
+
+        allowRecorderReturn.signal()
         let snapshot = try await startTask.value
         #expect(snapshot.directory.deletingLastPathComponent() == root)
+        #expect(recorderReturned.wait(timeout: .now() + 1) == .success)
         _ = try await controller.stop()
     }
 
