@@ -183,12 +183,21 @@ actor TranscriptionCoordinator {
     private func log(_ dir: URL, _ message: String) {
         let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n"
         let url = dir.appendingPathComponent("transcribe.log")
-        if let handle = FileHandle(forWritingAtPath: url.path) {
-            handle.seekToEndOfFile()
-            handle.write(Data(line.utf8))
-            try? handle.close()
-        } else {
-            try? Data(line.utf8).write(to: url)
+        do {
+            var contents = Data()
+            if FileManager.default.fileExists(atPath: url.path) {
+                let values = try url.resourceValues(
+                    forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
+                )
+                guard values.isRegularFile == true,
+                      values.isSymbolicLink != true
+                else { return }
+                contents = try Data(contentsOf: url)
+            }
+            contents.append(Data(line.utf8))
+            try AtomicFileWriter.production.write(contents, to: url)
+        } catch {
+            // Logging remains best-effort and must not block later jobs.
         }
     }
 
