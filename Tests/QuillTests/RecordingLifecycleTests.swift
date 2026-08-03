@@ -25,6 +25,17 @@ struct RecordingLifecycleTests {
             #expect(try posixMode(of: directory.appendingPathComponent("session.json")) == 0o600)
             let manifest = try readManifest(in: directory)
             #expect(manifest.state == .starting)
+            let json = try #require(
+                JSONSerialization.jsonObject(
+                    with: Data(contentsOf: directory.appendingPathComponent("session.json"))
+                ) as? [String: Any]
+            )
+            #expect(json["schema_version"] as? Int == 2)
+            #expect(json["capture_profile"] as? String == "online_meeting")
+            #expect(json["capture_part_id"] as? String == "part-0001")
+            #expect(json["failure"] is NSNull)
+            #expect(json["started_at"] is NSNull)
+            #expect(json["ended_at"] is NSNull)
         }
         let session = try RecordingSession(
             root: root,
@@ -97,11 +108,12 @@ struct RecordingLifecycleTests {
             atomicWriter: .production
         ).recover(in: root)
 
-        #expect(recovered == [session.dir])
+        #expect(recovered.map(\.lastPathComponent) == [session.dir.lastPathComponent])
         let manifest = try readManifest(in: session.dir)
         #expect(manifest.state == .interrupted)
         #expect(manifest.failure == nil)
         #expect(manifest.tracks.compactMap(\.failure) == preservedTrackFailures)
+        #expect(try !SessionTranscriptionEligibility.allowsTranscription(in: session.dir))
     }
 
     @Test func cleanCapturePromotesOnFirstSampleThenCompletesAfterFinalization() throws {
@@ -134,6 +146,7 @@ struct RecordingLifecycleTests {
         #expect(manifest.state == .complete)
         #expect(manifest.failure == nil)
         #expect(FileManager.default.fileExists(atPath: session.dir.appendingPathComponent("meta.json").path))
+        #expect(try SessionTranscriptionEligibility.allowsTranscription(in: session.dir))
     }
 
     @Test func terminalPersistenceFailureIsSpecificAndLeavesRecoverableState() throws {
@@ -162,6 +175,7 @@ struct RecordingLifecycleTests {
 
         #expect(error.phase == .terminalPersistence)
         #expect(try readManifest(in: session.dir).state == .recording)
+        #expect(try !SessionTranscriptionEligibility.allowsTranscription(in: session.dir))
     }
 
     @Test(arguments: crashExpectations)

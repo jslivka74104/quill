@@ -112,6 +112,26 @@ final class AppController {
         menuBar.onQuit = { [weak self] in self?.shutdown() }
         menuBar.update(recording: false, elapsed: nil)
 
+        do {
+            let recovered = try SessionLifecycleRecovery(
+                now: Date.init,
+                atomicWriter: .production
+            ).recover(in: root)
+            if !recovered.isEmpty {
+                FileHandle.standardError.write(Data(
+                    "recovered \(recovered.count) interrupted recording(s)\n".utf8
+                ))
+            }
+        } catch {
+            FileHandle.standardError.write(Data(
+                "recording recovery failed: \(error)\n".utf8
+            ))
+            notifyUser(
+                title: "quill — recording recovery failed",
+                body: "Some interrupted recordings could not be classified. \(error)"
+            )
+        }
+
         Task { [transcription, root] in
             await transcription.setStatusHandler { status in
                 Task { @MainActor [weak self] in
@@ -156,18 +176,30 @@ final class AppController {
 
     private func stopSession() {
         guard let session else { return }
-        session.stop()
         let elapsed = Self.format(Date().timeIntervalSince(session.startedAt))
-        FileHandle.standardError.write(Data(
-            "○ stopped · \(elapsed) · \(session.dir.path)\n".utf8
-        ))
+        let completed: Bool
+        do {
+            try session.stop()
+            completed = true
+            FileHandle.standardError.write(Data(
+                "○ stopped · \(elapsed) · \(session.dir.path)\n".utf8
+            ))
+        } catch {
+            completed = false
+            FileHandle.standardError.write(Data(
+                "recording finalization failed: \(error)\n".utf8
+            ))
+            notifyUser(title: "quill — recording finalization failed", body: "\(error)")
+        }
         self.session = nil
         ticker?.invalidate()
         ticker = nil
         menuBar.update(recording: false, elapsed: nil)
 
-        let dir = session.dir
-        Task { [transcription] in await transcription.enqueue(dir) }
+        if completed {
+            let dir = session.dir
+            Task { [transcription] in await transcription.enqueue(dir) }
+        }
     }
 
     private func showTranscription(_ status: TranscriptionCoordinator.Status) {

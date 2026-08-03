@@ -42,9 +42,16 @@ actor TranscriptionCoordinator {
 
         let fm = FileManager.default
         let pending = entries
-            .filter {
-                fm.fileExists(atPath: $0.appendingPathComponent("meta.json").path)
-                    && !fm.fileExists(atPath: $0.appendingPathComponent("transcript.json").path)
+            .filter { directory in
+                guard fm.fileExists(atPath: directory.appendingPathComponent("meta.json").path),
+                      !fm.fileExists(atPath: directory.appendingPathComponent("transcript.json").path)
+                else { return false }
+                do {
+                    return try SessionTranscriptionEligibility.allowsTranscription(in: directory)
+                } catch {
+                    log(directory, "skipping session with unreadable lifecycle manifest: \(error)")
+                    return false
+                }
             }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
         for dir in pending where !queue.contains(dir) {
