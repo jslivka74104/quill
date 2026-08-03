@@ -1,7 +1,7 @@
 # `phase3-hardening` TDD evidence
 
 Date: 2026-08-03
-Status: **Local GREEN; pinned CI pending an authorized push**
+Status: **Local and pinned Xcode 16.4 CI GREEN**
 
 ## Scope
 
@@ -27,11 +27,30 @@ architecture gates independent of Ruby's ambient external encoding.
   recovery path and observed a non-private mode. GREEN `08a210c` (`fix: secure
   transcription diagnostics`) moved append logging to private atomic
   replacement and passed both transcription-recovery tests.
-- The first full parallel Swift run then exposed scheduler-sensitive timing in
-  the main-actor responsiveness assertion. Test-only checkpoint `332d862`
+- The first full parallel Swift run exposed scheduler-sensitive timing in the
+  main-actor responsiveness assertion. Test-only checkpoint `332d862`
   (`test: stabilize recording responsiveness timing`) widened the blocking
-  fixture and preserved a clear fail/pass margin. Two consecutive full runs
-  and the coverage run passed afterward.
+  fixture, after which two consecutive local runs and the coverage run passed.
+- Pinned run `30827663118` at `47dc34c` then provided the first Xcode 16.4 RED:
+  strict concurrency rejected a main-actor-isolated, non-Sendable test fixture
+  crossing into `RecordingSessionController`. Checkpoint `0b941e0` isolated
+  only the heartbeat on `MainActor`, preserving the production sendability
+  boundary.
+- Pinned run `30828087503` compiled all tests and exposed a second RED: the
+  recorder-deadline test used a `< 60 ms` wall-clock threshold and measured
+  about 95 ms under parallel runner load. Checkpoint `3bc98b7` replaced that
+  threshold with an ordering guarantee: the session authors `start_timeout`
+  while the deliberately blocked recorder call has not returned. That test
+  passed in pinned run `30828651405`.
+- The same run exposed the remaining `< 120 ms` MainActor heartbeat threshold,
+  which measured about 313 ms under runner load. Checkpoint `627f027` replaced
+  it with a deterministic event-ordering proof. Pinned run `30828962985`
+  supplied the final compile-time RED because Xcode 16.4 forbids semaphore
+  waits from async contexts. Checkpoint `d25d6c1` uses `AsyncStream` for the
+  async-side notification and confines the blocking semaphore to the detached
+  recorder thread.
+- Pinned run `30829298653` at `d25d6c1` passed the complete Swift 6.1 / Xcode
+  16.4 workflow, including all 44 Swift tests and both Ruby contract suites.
 
 ## Result
 
@@ -49,7 +68,7 @@ architecture gates independent of Ruby's ambient external encoding.
   commit `1d9d991`; the original Phase 3 evidence now states its former
   explicit UTF-8 locale precondition.
 
-## Final local verification
+## Final verification
 
 - Production build: **PASS**.
 - Full Swift suite: **44 tests in 9 suites, PASS**.
@@ -64,6 +83,8 @@ architecture gates independent of Ruby's ambient external encoding.
 - `git diff --check`: **PASS**.
 - Gitleaks: **full history scanned, no findings**; the testing-evidence
   directory was also scanned with no findings.
+- GitHub Actions run `30829298653`: **PASS** on macOS 15 with Swift 6.1 /
+  Xcode 16.4 at `d25d6c1`.
 
 Coverage reports 83.94% for `RecordingSession.swift`, 85.71% for
 `RecordingRootPreflight.swift`, and 91.47% for `SessionLifecycle.swift`, or
@@ -74,5 +95,5 @@ coverage is 50.94%; no repository-wide 80% claim is made.
 Local Swift execution used the documented Command Line Tools compatibility
 framework, writable module caches, disabled SwiftPM sandbox, and the installed
 macOS 15.4 SDK. Those are host accommodations, not product or CI settings.
-Pinned macOS 15 / Xcode 16.4 CI remains pending because this branch has not
-been pushed.
+The authoritative pinned lane runs plain `swift test` on macOS 15 with Xcode
+16.4 and is green.
