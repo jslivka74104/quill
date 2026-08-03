@@ -218,11 +218,36 @@ final class RecordingSession {
         }
 
         for recorder in dependencies.recorders {
+            let destination = dir.appendingPathComponent(recorder.relativePath)
             do {
-                try recorder.start(dir.appendingPathComponent(recorder.relativePath))
+                try PrivateFileSystem.preparePrivateFile(destination)
+            } catch {
+                recordStartFailure(
+                    error,
+                    for: recorder,
+                    code: "track_destination_security_failed"
+                )
+                continue
+            }
+
+            do {
+                try recorder.start(destination)
                 startedTrackIDs.insert(recorder.trackID)
             } catch {
                 recordStartFailure(error, for: recorder)
+                continue
+            }
+
+            do {
+                try PrivateFileSystem.securePrivateFile(destination)
+            } catch {
+                do { try recorder.stop() } catch { }
+                startedTrackIDs.remove(recorder.trackID)
+                recordStartFailure(
+                    error,
+                    for: recorder,
+                    code: "track_destination_security_failed"
+                )
                 continue
             }
             try injectInterruption(at: .recorderStarted(trackID: recorder.trackID))
@@ -395,13 +420,17 @@ final class RecordingSession {
         }
     }
 
-    private func recordStartFailure(_ error: Error, for recorder: RecordingTrackDriver) {
+    private func recordStartFailure(
+        _ error: Error,
+        for recorder: RecordingTrackDriver,
+        code: String? = nil
+    ) {
         guard let index = manifest.tracks.firstIndex(where: { $0.trackID == recorder.trackID }) else {
             return
         }
         manifest.tracks[index].captureStatus = .missing
         manifest.tracks[index].failure = SessionTrackFailure(
-            code: recorder.startFailureCode,
+            code: code ?? recorder.startFailureCode,
             message: String(describing: error),
             observedAt: dependencies.now(),
             recoveryAttempted: false

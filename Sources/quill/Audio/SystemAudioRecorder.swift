@@ -123,12 +123,14 @@ final class SystemAudioRecorder {
             AVNumberOfChannelsKey: format.channelCount,
         ]
         do {
-            return try AVAudioFile(
+            let file = try AVAudioFile(
                 forWriting: url,
                 settings: settings,
                 commonFormat: format.commonFormat,
                 interleaved: format.isInterleaved
             )
+            try PrivateFileSystem.securePrivateFile(url)
+            return file
         } catch {
             throw RecorderError.fileCreationFailed(error)
         }
@@ -138,7 +140,6 @@ final class SystemAudioRecorder {
         var status = AudioDeviceCreateIOProcIDWithBlock(&procID, aggregateID, queue) {
             [weak self] _, inInputData, _, _, _ in
             guard let self, let file = self.file else { return }
-            if self.firstBufferAt == nil { self.firstBufferAt = Date() }
             guard let buffer = AVAudioPCMBuffer(
                 pcmFormat: format,
                 bufferListNoCopy: inInputData,
@@ -146,6 +147,7 @@ final class SystemAudioRecorder {
             ) else { return }
             do {
                 try file.write(from: buffer)
+                if self.firstBufferAt == nil { self.firstBufferAt = Date() }
             } catch {
                 FileHandle.standardError.write(Data("system track write failed: \(error)\n".utf8))
             }

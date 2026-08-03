@@ -245,6 +245,29 @@ enum PrivateFileSystem {
         }
     }
 
+    static func preparePrivateFile(_ url: URL) throws {
+        if !FileManager.default.fileExists(atPath: url.path) {
+            guard FileManager.default.createFile(
+                atPath: url.path,
+                contents: nil,
+                attributes: [.posixPermissions: 0o600]
+            ) else {
+                throw PrivateFileSystemError.cannotCreateFile(url)
+            }
+        }
+        try securePrivateFile(url)
+    }
+
+    static func securePrivateFile(_ url: URL) throws {
+        let result = url.path.withCString { path in
+            Darwin.chmod(path, mode_t(0o600))
+        }
+        guard result == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        try verifyMode(of: url, expected: 0o600)
+    }
+
     static func synchronizeDirectory(_ directory: URL) throws {
         let descriptor = Darwin.open(directory.path, O_RDONLY)
         guard descriptor >= 0 else {
@@ -257,11 +280,14 @@ enum PrivateFileSystem {
     }
 
     enum PrivateFileSystemError: Error, CustomStringConvertible {
+        case cannotCreateFile(URL)
         case modeUnavailable(URL)
         case unexpectedMode(URL, expected: Int, actual: Int)
 
         var description: String {
             switch self {
+            case .cannotCreateFile(let url):
+                return "could not create private file \(url.path)"
             case .modeUnavailable(let url):
                 return "POSIX mode is unavailable for \(url.path)"
             case .unexpectedMode(let url, let expected, let actual):

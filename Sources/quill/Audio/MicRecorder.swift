@@ -113,6 +113,7 @@ final class MicRecorder: @unchecked Sendable {
                 commonFormat: monoFormat.commonFormat,
                 interleaved: monoFormat.isInterleaved
             )
+            try PrivateFileSystem.securePrivateFile(url!)
         } catch {
             throw RecorderError.fileCreationFailed(error)
         }
@@ -154,8 +155,6 @@ final class MicRecorder: @unchecked Sendable {
         let checkFrames = Int(format.sampleRate)
         input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
             guard let self, let file = self.file else { return }
-            if self.firstBufferAt == nil { self.firstBufferAt = Date() }
-
             if !self.livenessSettled {
                 let frames = Int(buffer.frameLength)
                 if let data = buffer.floatChannelData?[0] {
@@ -175,6 +174,7 @@ final class MicRecorder: @unchecked Sendable {
 
             do {
                 try file.write(from: buffer)
+                if self.firstBufferAt == nil { self.firstBufferAt = Date() }
             } catch {
                 FileHandle.standardError.write(Data("mic track write failed: \(error)\n".utf8))
             }
@@ -193,7 +193,6 @@ final class MicRecorder: @unchecked Sendable {
         }
         input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             guard let self, let file = self.file else { return }
-            if self.firstBufferAt == nil { self.firstBufferAt = Date() }
             guard let mono = AVAudioPCMBuffer(
                 pcmFormat: monoFormat,
                 frameCapacity: buffer.frameCapacity
@@ -201,6 +200,7 @@ final class MicRecorder: @unchecked Sendable {
             do {
                 try converter.convert(to: mono, from: buffer)
                 try file.write(from: mono)
+                if self.firstBufferAt == nil { self.firstBufferAt = Date() }
             } catch {
                 FileHandle.standardError.write(Data("mic track write failed: \(error)\n".utf8))
             }
