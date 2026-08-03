@@ -237,6 +237,33 @@ struct RecordingLifecycleTests {
         #expect(manifest.tracks.map(\.byteCount) == [15])
     }
 
+    @Test func trackAttributeFailurePersistsInvalidTerminalTrack() throws {
+        let root = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let session = try RecordingSession(
+            root: root,
+            dependencies: dependencies(
+                fileAttributes: { _ in throw FixtureFailure.attributes },
+                recorders: [RecordingTrackDriver.fixtureSystem(firstSampleAt: { fixedDate })]
+            )
+        )
+        try session.start()
+
+        let error = try #require(throws: RecordingSessionError.self) {
+            try session.stop()
+        }
+
+        #expect(error.phase == .finalization)
+        let manifest = try readManifest(in: session.dir)
+        #expect(manifest.state == .failed)
+        assertTrackContract(manifest)
+        #expect(manifest.tracks.map(\.captureStatus) == [.invalid])
+        #expect(manifest.tracks.map { $0.failure?.code } == [
+            "track_evidence_validation_failed"
+        ])
+    }
+
     @Test func terminalPersistenceFailureIsSpecificAndLeavesRecoverableState() throws {
         let root = try makeTemporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -435,11 +462,15 @@ struct RecordingLifecycleTests {
         case failedWrite
         case terminalWrite
         case finalization
+        case attributes
     }
 
     private func dependencies(
         preflight: RecordingRootPreflight = .fixturePassing,
         atomicWriter: AtomicFileWriter = .production,
+        fileAttributes: @escaping (URL) throws -> [FileAttributeKey: Any] = {
+            try FileManager.default.attributesOfItem(atPath: $0.path)
+        },
         recorders: [RecordingTrackDriver],
         interruptAt: @escaping (RecordingLifecycleBoundary) -> Bool = { _ in false }
     ) -> RecordingSession.Dependencies {
@@ -448,6 +479,7 @@ struct RecordingLifecycleTests {
             sessionID: { fixedSessionID },
             preflight: preflight,
             atomicWriter: atomicWriter,
+            fileAttributes: fileAttributes,
             recorders: recorders,
             transitionTimeout: 0,
             interruptAt: interruptAt
