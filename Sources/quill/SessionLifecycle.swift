@@ -1,4 +1,3 @@
-import Darwin
 import Foundation
 
 struct FailureContext: Equatable, Sendable, Codable {
@@ -352,9 +351,7 @@ struct AtomicFileWriter {
                     throw error
                 }
 
-                guard Darwin.rename(temporary.path, destination.path) == 0 else {
-                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-                }
+                try PrivateFileSystem.replaceItem(at: temporary, with: destination)
                 try PrivateFileSystem.verifyMode(of: destination, expected: 0o600)
                 try PrivateFileSystem.synchronizeDirectory(parent)
             } catch {

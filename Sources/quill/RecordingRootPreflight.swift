@@ -279,6 +279,12 @@ enum PrivateFileSystem {
         }
     }
 
+    static func replaceItem(at source: URL, with destination: URL) throws {
+        guard Darwin.rename(source.path, destination.path) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+    }
+
     enum PrivateFileSystemError: Error, CustomStringConvertible {
         case cannotCreateFile(URL)
         case modeUnavailable(URL)
