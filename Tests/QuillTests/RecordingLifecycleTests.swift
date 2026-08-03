@@ -219,17 +219,19 @@ struct RecordingLifecycleTests {
         let root = try makeTemporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let recorderEntered = DispatchSemaphore(value: 0)
+        let recorderEntered = AsyncStream<Void>.makeStream()
+        let recorderEnteredContinuation = recorderEntered.continuation
         let allowRecorderReturn = DispatchSemaphore(value: 0)
-        let recorderReturned = DispatchSemaphore(value: 0)
+        let recorderReturned = SynchronizedFlag()
         defer { allowRecorderReturn.signal() }
 
         let recorder = RecordingTrackDriver.fixtureSystem(
             firstSampleAt: { fixedDate },
             start: { _ in
-                recorderEntered.signal()
+                recorderEnteredContinuation.yield()
+                recorderEnteredContinuation.finish()
                 allowRecorderReturn.wait()
-                recorderReturned.signal()
+                recorderReturned.set()
             }
         )
         let controller = RecordingSessionController(
@@ -244,15 +246,17 @@ struct RecordingLifecycleTests {
         )
 
         let startTask = Task { try await controller.start() }
-        #expect(recorderEntered.wait(timeout: .now() + 5) == .success)
+        var recorderEnteredIterator = recorderEntered.stream.makeAsyncIterator()
+        let didEnterRecorder = await recorderEnteredIterator.next()
+        #expect(didEnterRecorder != nil)
 
         await Task { @MainActor in }.value
-        #expect(recorderReturned.wait(timeout: .now()) == .timedOut)
+        #expect(!recorderReturned.isSet)
 
         allowRecorderReturn.signal()
         let snapshot = try await startTask.value
         #expect(snapshot.directory.deletingLastPathComponent() == root)
-        #expect(recorderReturned.wait(timeout: .now() + 1) == .success)
+        #expect(recorderReturned.isSet)
         _ = try await controller.stop()
     }
 
@@ -685,6 +689,23 @@ struct RecordingLifecycleTests {
                 sourceLocation: sourceLocation
             )
         }
+    }
+}
+
+private final class SynchronizedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+
+    var isSet: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func set() {
+        lock.lock()
+        value = true
+        lock.unlock()
     }
 }
 
