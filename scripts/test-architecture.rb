@@ -125,6 +125,14 @@ class ArchitectureContractTest < Minitest::Test
                     "      has measured evidence."
   end
 
+  def test_governing_architecture_documents_are_accepted
+    architecture = read_utf8(ARCH.join("quill-v2-architecture.md"))
+    governing_rules = read_utf8(ARCH.join("governing-rules.md"))
+
+    assert_includes architecture, "Status: **Accepted**"
+    assert_includes governing_rules, "Status: **Accepted**"
+  end
+
   def test_adrs_record_owner_acceptance_without_clearing_adr_0004_for_production
     REQUIRED_ADRS.first(3).each do |name|
       assert_includes ARCH.join("adr", name).read, "Status: **Accepted**"
@@ -156,7 +164,24 @@ class ArchitectureContractTest < Minitest::Test
     assert_includes source, "static func segments"
   end
 
+  def test_validator_runs_without_locale_environment
+    output, status = run_validator(
+      ROOT,
+      {
+        "LANG" => "C",
+        "LC_ALL" => "C",
+        "RUBYOPT" => "-EUS-ASCII:US-ASCII"
+      }
+    )
+
+    assert status.success?, output
+  end
+
   private
+
+  def read_utf8(path)
+    path.read(encoding: Encoding::UTF_8)
+  end
 
   def assert_nullable(fragment)
     one_of = fragment["oneOf"]
@@ -175,8 +200,9 @@ class ArchitectureContractTest < Minitest::Test
     path.write(path.readlines.reject { |line| line.include?(needle) }.join)
   end
 
-  def run_validator(probe)
+  def run_validator(probe, environment = {})
     stdout, stderr, status = Open3.capture3(
+      environment,
       RbConfig.ruby,
       probe.join("scripts", "validate-architecture.rb").to_s
     )

@@ -22,6 +22,7 @@ struct TranscriptTests {
         try transcript.write(to: directory)
 
         let jsonURL = directory.appendingPathComponent("transcript.json")
+        let markdownURL = directory.appendingPathComponent("transcript.md")
         let decoded = try JSONDecoder().decode(Transcript.self, from: Data(contentsOf: jsonURL))
         #expect(decoded.engine == "parakeet")
         #expect(decoded.model == "fixture-model")
@@ -33,7 +34,7 @@ struct TranscriptTests {
         #expect(decoded.segments[0].text == "First line.")
 
         let markdown = try String(
-            contentsOf: directory.appendingPathComponent("transcript.md"),
+            contentsOf: markdownURL,
             encoding: .utf8
         )
         #expect(
@@ -48,5 +49,12 @@ struct TranscriptTests {
 
             """
         )
+        #expect(try posixMode(of: jsonURL) == 0o600)
+        #expect(try posixMode(of: markdownURL) == 0o600)
+    }
+
+    private func posixMode(of url: URL) throws -> Int {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        return try #require(attributes[.posixPermissions] as? Int) & 0o777
     }
 }

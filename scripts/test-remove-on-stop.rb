@@ -209,6 +209,32 @@ class RemoveOnStopContractTest < Minitest::Test
     end
   end
 
+  def test_validator_rejects_system_import_alias_and_silgen_name_bypasses
+    probes = {
+      "system import alias" => <<~SWIFT,
+        import func Darwin.system
+        let launcher = system
+      SWIFT
+      "silgen system binding" => <<~SWIFT,
+        @_silgen_name("system")
+        func c_shell(_ command: UnsafePointer<CChar>) -> Int32
+      SWIFT
+    }
+
+    probes.each do |name, source|
+      with_fixture do |fixture|
+        write_reviewed_process_sites(fixture)
+        path = write_source(fixture, "Sources/quill/Bypass.swift", source)
+        assert_swift_parses(path)
+
+        output, status = run_validator(fixture)
+
+        refute status.success?, "#{name} unexpectedly passed:\n#{output}"
+        assert_includes output, "unreviewed process launch primitive"
+      end
+    end
+  end
+
   def test_validator_rejects_dynamic_reassignment_in_a_reviewed_process_site
     with_fixture do |fixture|
       write_reviewed_process_sites(fixture)
