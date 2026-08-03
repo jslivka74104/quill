@@ -1,7 +1,7 @@
 # `recording-lifecycle` TDD evidence
 
 Date: 2026-08-02
-Status: **RED established; implementation pending**
+Status: **Local GREEN; publishing and packaged-app gates pending**
 
 ## Source and scoped interpretation
 
@@ -51,19 +51,20 @@ recorder health redesign remain Phase 4 work.
   elapsed-time, capture cleanup, and Phase 2 security behavior to remain
   compatible outside the intentional lifecycle changes.
 
-## Planned test specification
+## Verified test specification
 
-| Guarantee | Test target | Evidence status |
+| Guarantee | Test target | Evidence |
 |---|---|---|
-| Secured directory and atomic `starting` manifest precede recorder start | `RecordingLifecycleTests` ordering test | Pending RED |
-| Every root capability fails specifically before evidence creation | `RecordingRootPreflightTests` capability matrix | Pending RED |
-| No live requested track produces an observed typed `failed` transition | `RecordingLifecycleTests` start-failure test | Pending RED |
-| Recovery alone authors `interrupted` with null session failure | `RecordingLifecycleTests` recovery matrix | Pending RED |
-| First-buffer liveness promotes to `recording`; finalization then persists `complete` | `RecordingLifecycleTests` clean-transition test | Pending RED |
-| Terminal persistence failure stays observable and recoverable | `RecordingLifecycleTests` terminal-write failure test | Pending RED |
-| Injected crashes leave truthful discoverable state at every post-manifest boundary | `RecordingLifecycleTests` crash matrix | Pending RED |
-| Real local temporary storage preserves `0700`/`0600` | `RecordingRootPreflightTests` filesystem integration | Pending RED |
-| Legacy and Phase 2 behavior remains green | Existing Swift and Ruby suites | Pending GREEN |
+| Secured directory, audio destinations, and atomic `starting` manifest precede recorder start | `startingManifestAndPrivateDirectoryPrecedeRecorderStart` | Pass |
+| Every root capability fails specifically before evidence creation | `refusesEachCapabilityFailureBeforeCreatingEvidence` (six capability arguments) | Pass |
+| No live requested track produces an observed typed `failed` transition | `noLiveRecorderWritesObservedTypedFailure` | Pass |
+| Recovery alone authors `interrupted` with null session failure | `recoveryAloneAuthorsInterruptedWithoutSessionFailure` (`starting` and `recording`) | Pass |
+| First-buffer liveness promotes to `recording`; finalization then persists `complete` | `cleanCapturePromotesOnFirstSampleThenCompletesAfterFinalization` | Pass |
+| Initial, failed-state, and terminal persistence failures remain observable and recoverable | Three persistence-failure regression tests | Pass |
+| Terminal manifests are byte-immutable under recovery | `terminalManifestRemainsByteImmutable` | Pass |
+| Injected crashes leave truthful discoverable state at every lifecycle boundary | `lifecycleCrashMatrixLeavesTruthfulState` (eight crash boundaries) | Pass |
+| Real local temporary storage preserves `0700`/`0600` | `productionStorageCreatesAndVerifiesPrivateModes` | Pass |
+| Legacy and Phase 2 behavior remains green | Full Swift suite and existing Ruby architecture/security suites | Pass |
 
 ## RED → GREEN report
 
@@ -84,15 +85,76 @@ recorder health redesign remain Phase 4 work.
 - This is the intended compile-time RED: the failure identifies the missing
   deterministic lifecycle and storage-capability contract, not test syntax,
   dependency resolution, or an unrelated regression.
-- Checkpoint: pending the immediate RED commit.
+- Checkpoint: `43facdd` (`test: add recording lifecycle crash contracts`).
 
 ### GREEN
 
-Pending implementation and verification.
+- Initial implementation checkpoint: `9666014` (`feat: persist truthful
+  recording lifecycle`). The focused Phase 3 suite became green with truthful
+  `starting` → `recording` → terminal transitions, recovery, preflight, and
+  transcription eligibility.
+- Adversarial hardening checkpoint: `9b8dc39` (`test: add adversarial lifecycle
+  persistence regressions`) deliberately returned the suite to RED. It exposed
+  that a recorder could be invoked before its concrete audio destination had
+  been created and verified as private, and added failure-of-failure and
+  terminal-immutability contracts.
+- Hardening implementation checkpoint: `8c9486d` (`fix: secure recording
+  evidence before capture`). Audio destinations are now created and verified
+  at `0600` before recorder APIs run, real recorders re-secure their opened
+  files, and first-sample timestamps are published only after a successful
+  write.
+- Refactor checkpoint: `354b91f` (`refactor: isolate lifecycle filesystem
+  primitives`). The final atomic-replacement primitive was moved behind the
+  existing private-filesystem boundary so the Phase 2 command-launch detector
+  remains both conservative and green.
+
+## Verification results
+
+- Focused Phase 3 tests: **11 tests in 2 suites passed**.
+- Full Swift regression suite: **35 tests in 8 suites passed**.
+- Coverage-instrumented full suite: **35 tests in 8 suites passed**.
+- Ruby stop/security regression suite, default and POSIX locales: **13 runs,
+  105 assertions, 0 failures** in each locale.
+- Ruby architecture suite: **11 runs, 59 assertions, 0 failures**.
+- Architecture schema/link validator: pass.
+- Retired-hook/command-interpreter validator, default and POSIX locales: pass.
+- Swift parser check for every changed production and test source: pass.
+- Whitespace/error-marker check across the phase range: pass.
+- Gitleaks: no findings in the Phase 3 implementation range or the
+  then-current full history.
+- Dependency manifests are unchanged; this phase introduces no third-party
+  package or dependency-audit delta.
+
+The local Swift toolchain is Swift 6.3 paired with the Command Line Tools 15.4
+SDK. Test execution therefore used ignored, temporary compatibility copies of
+Swift Testing/support frameworks and the ArgumentParser checkout. These host
+accommodations are outside the Git diff. The compiler's repeated
+`no unsafe operations occur within 'unsafe' expression` diagnostics originate
+inside generated Swift Testing macros on this mismatched host, not in Quill
+source.
 
 ## Coverage and known gaps
 
-Pending. Live TCC prompts, real Core Audio timing, callback ownership, ring
-buffer saturation, TSan, sandbox bookmarks, and File Provider devices are not
-claimed by deterministic Phase 3 tests. They remain explicit later-phase or
-packaged-app gates.
+The three Phase 3 lifecycle core files have **80.62% combined line coverage**:
+
+| File | Line coverage |
+|---|---:|
+| `SessionLifecycle.swift` | 92.54% |
+| `RecordingRootPreflight.swift` | 82.72% |
+| `RecordingSession.swift` | 72.44% |
+
+The lower `RecordingSession` number is concentrated in production-only
+recorder wiring and error presentation that deterministic tests replace at the
+injected boundary. Modified application, Core Audio, and transcription
+integration files are included in the passing full regression suite but are
+not represented as unit-coverage successes; their live platform paths require
+the packaged-app gates below.
+
+Live TCC prompts, real Core Audio timing, callback ownership, ring-buffer
+saturation, TSan, sandbox bookmarks, low-capacity devices, and real iCloud or
+File Provider volumes are not claimed by deterministic Phase 3 tests. CI on
+the pinned repository environment and packaged-app/device verification remain
+pending until the local branch is authorized for publishing. Callback
+ownership, synchronized fallback, and deeper recorder health behavior remain
+assigned to Phase 4; bookmarks/remapping and the general v2 store remain later
+ordered changes.
