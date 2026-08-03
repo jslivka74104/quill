@@ -176,9 +176,18 @@ struct RecordingLifecycleTests {
         let root = try makeTemporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
 
+        let recorderEntered = DispatchSemaphore(value: 0)
+        let allowRecorderReturn = DispatchSemaphore(value: 0)
+        let recorderReturned = DispatchSemaphore(value: 0)
+        defer { allowRecorderReturn.signal() }
+
         let recorder = RecordingTrackDriver.fixtureSystem(
             firstSampleAt: { nil },
-            start: { _ in Thread.sleep(forTimeInterval: 0.08) }
+            start: { _ in
+                recorderEntered.signal()
+                allowRecorderReturn.wait()
+                recorderReturned.signal()
+            }
         )
         let session = try RecordingSession(
             root: root,
@@ -191,17 +200,19 @@ struct RecordingLifecycleTests {
             )
         )
 
-        let started = ProcessInfo.processInfo.systemUptime
         _ = try #require(throws: RecordingSessionError.self) {
             try session.start()
         }
-        let elapsed = ProcessInfo.processInfo.systemUptime - started
 
-        #expect(elapsed < 0.06)
+        #expect(recorderEntered.wait(timeout: .now() + 1) == .success)
+        #expect(recorderReturned.wait(timeout: .now()) == .timedOut)
         let manifest = try readManifest(in: session.dir)
         #expect(manifest.state == .failed)
         assertTrackContract(manifest)
         #expect(manifest.tracks.map { $0.failure?.code } == ["start_timeout"])
+
+        allowRecorderReturn.signal()
+        #expect(recorderReturned.wait(timeout: .now() + 1) == .success)
     }
 
     @Test func recordingControllerKeepsMainActorResponsiveDuringStart() async throws {
