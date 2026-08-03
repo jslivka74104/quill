@@ -204,7 +204,7 @@ struct RecordingLifecycleTests {
         #expect(manifest.tracks.map { $0.failure?.code } == ["start_timeout"])
     }
 
-    @MainActor @Test func recordingControllerKeepsMainActorResponsiveDuringStart() async throws {
+    @Test func recordingControllerKeepsMainActorResponsiveDuringStart() async throws {
         let root = try makeTemporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
 
@@ -225,8 +225,11 @@ struct RecordingLifecycleTests {
 
         let started = ProcessInfo.processInfo.systemUptime
         let startTask = Task { try await controller.start() }
-        try await Task.sleep(for: .milliseconds(20))
-        let heartbeatElapsed = ProcessInfo.processInfo.systemUptime - started
+        let heartbeatTask = Task { @MainActor in
+            try await Task.sleep(for: .milliseconds(20))
+            return ProcessInfo.processInfo.systemUptime - started
+        }
+        let heartbeatElapsed = try await heartbeatTask.value
 
         #expect(heartbeatElapsed < 0.12)
         let snapshot = try await startTask.value
