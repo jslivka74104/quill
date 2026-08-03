@@ -23,6 +23,7 @@ struct RecordingLifecycleTests {
             let directory = destination.deletingLastPathComponent()
             #expect(try posixMode(of: directory) == 0o700)
             #expect(try posixMode(of: directory.appendingPathComponent("session.json")) == 0o600)
+            #expect(try posixMode(of: destination) == 0o600)
             let manifest = try readManifest(in: directory)
             #expect(manifest.state == .starting)
             let json = try #require(
@@ -178,6 +179,97 @@ struct RecordingLifecycleTests {
         #expect(try !SessionTranscriptionEligibility.allowsTranscription(in: session.dir))
     }
 
+    @Test func initialPersistenceFailureNeverStartsARecorder() throws {
+        let root = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var recorderStartCount = 0
+        let writer = AtomicFileWriter { _, _ in throw FixtureFailure.initialWrite }
+        let recorder = RecordingTrackDriver.fixtureSystem(firstSampleAt: { fixedDate }) { _ in
+            recorderStartCount += 1
+        }
+
+        let error = try #require(throws: RecordingSessionError.self) {
+            _ = try RecordingSession(
+                root: root,
+                dependencies: dependencies(atomicWriter: writer, recorders: [recorder])
+            )
+        }
+
+        #expect(error.phase == .startingPersistence)
+        #expect(recorderStartCount == 0)
+        let directories = try FileManager.default.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: nil
+        )
+        let directory = try #require(directories.first)
+        #expect(!FileManager.default.fileExists(
+            atPath: directory.appendingPathComponent("session.json").path
+        ))
+    }
+
+    @Test func failedPersistenceFailureFallsBackToRecoveryAuthorship() throws {
+        let root = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let writer = AtomicFileWriter { data, destination in
+            let manifest = try JSONDecoder.quill.decode(SessionManifest.self, from: data)
+            if manifest.state == .failed {
+                throw FixtureFailure.failedWrite
+            }
+            try AtomicFileWriter.production.write(data, to: destination)
+        }
+        let recorder = RecordingTrackDriver.fixtureSystem(
+            firstSampleAt: { nil },
+            start: { _ in throw FixtureFailure.systemStart }
+        )
+        let session = try RecordingSession(
+            root: root,
+            dependencies: dependencies(atomicWriter: writer, recorders: [recorder])
+        )
+
+        let error = try #require(throws: RecordingSessionError.self) {
+            try session.start()
+        }
+        #expect(error.phase == .terminalPersistence)
+        #expect(try readManifest(in: session.dir).state == .starting)
+
+        _ = try SessionLifecycleRecovery(
+            now: { fixedDate.addingTimeInterval(10) },
+            atomicWriter: .production
+        ).recover(in: root)
+        let recovered = try readManifest(in: session.dir)
+        #expect(recovered.state == .interrupted)
+        #expect(recovered.failure == nil)
+    }
+
+    @Test func terminalManifestRemainsByteImmutable() throws {
+        let root = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let session = try RecordingSession(
+            root: root,
+            dependencies: dependencies(
+                recorders: [RecordingTrackDriver.fixtureSystem(firstSampleAt: { fixedDate })]
+            )
+        )
+        try session.start()
+        try session.stop()
+        let manifestURL = session.dir.appendingPathComponent("session.json")
+        let terminalBytes = try Data(contentsOf: manifestURL)
+
+        _ = try #require(throws: RecordingSessionError.self) {
+            try session.stop()
+        }
+        let recovered = try SessionLifecycleRecovery(
+            now: { fixedDate.addingTimeInterval(10) },
+            atomicWriter: .production
+        ).recover(in: root)
+
+        #expect(recovered.isEmpty)
+        #expect(try Data(contentsOf: manifestURL) == terminalBytes)
+    }
+
     @Test(arguments: crashExpectations)
     func lifecycleCrashMatrixLeavesTruthfulState(expectation: CrashExpectation) throws {
         let root = try makeTemporaryRoot()
@@ -242,6 +334,8 @@ struct RecordingLifecycleTests {
     private enum FixtureFailure: Error {
         case systemStart
         case microphoneStart
+        case initialWrite
+        case failedWrite
         case terminalWrite
     }
 
