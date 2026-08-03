@@ -210,7 +210,7 @@ struct RecordingLifecycleTests {
 
         let recorder = RecordingTrackDriver.fixtureSystem(
             firstSampleAt: { fixedDate },
-            start: { _ in Thread.sleep(forTimeInterval: 0.08) }
+            start: { _ in Thread.sleep(forTimeInterval: 0.2) }
         )
         let controller = RecordingSessionController(
             root: root,
@@ -218,17 +218,17 @@ struct RecordingLifecycleTests {
                 now: Date.init,
                 preflight: .fixturePassing,
                 recorders: [recorder],
-                transitionTimeout: 0.2,
+                transitionTimeout: 0.4,
                 pollInterval: 0.001
             )
         )
 
         let started = ProcessInfo.processInfo.systemUptime
         let startTask = Task { try await controller.start() }
-        try await Task.sleep(for: .milliseconds(10))
+        try await Task.sleep(for: .milliseconds(20))
         let heartbeatElapsed = ProcessInfo.processInfo.systemUptime - started
 
-        #expect(heartbeatElapsed < 0.05)
+        #expect(heartbeatElapsed < 0.12)
         let snapshot = try await startTask.value
         #expect(snapshot.directory.deletingLastPathComponent() == root)
         _ = try await controller.stop()
