@@ -149,12 +149,13 @@ struct RecordingLifecycleTests {
         let before = try readManifest(in: session.dir)
         let preservedTrackFailures = before.tracks.compactMap(\.failure)
 
-        let recovered = try SessionLifecycleRecovery(
+        let report = try SessionLifecycleRecovery(
             now: { fixedDate.addingTimeInterval(10) },
             atomicWriter: .production
         ).recover(in: root)
 
-        #expect(recovered.map(\.lastPathComponent) == [session.dir.lastPathComponent])
+        #expect(report.recovered.map(\.lastPathComponent) == [session.dir.lastPathComponent])
+        #expect(report.failures.isEmpty)
         let manifest = try readManifest(in: session.dir)
         #expect(manifest.state == .interrupted)
         #expect(manifest.failure == nil)
@@ -250,12 +251,16 @@ struct RecordingLifecycleTests {
             )
         )
 
-        let recovered = try SessionLifecycleRecovery(
+        let report = try SessionLifecycleRecovery(
             now: { fixedDate.addingTimeInterval(10) },
             atomicWriter: .production
         ).recover(in: root)
 
-        #expect(recovered.map(\.lastPathComponent) == [valid.dir.lastPathComponent])
+        #expect(report.recovered.map(\.lastPathComponent) == [valid.dir.lastPathComponent])
+        #expect(report.failures.map { $0.directory.lastPathComponent } == [
+            corrupt.lastPathComponent
+        ])
+        #expect(report.failures.map(\.kind) == [.unreadableManifest])
         let manifest = try readManifest(in: valid.dir)
         #expect(manifest.state == .interrupted)
         assertTrackContract(manifest)
@@ -283,12 +288,13 @@ struct RecordingLifecycleTests {
         )
         try AtomicFileWriter.production.write(futureBytes, to: manifestURL)
 
-        let recovered = try SessionLifecycleRecovery(
+        let report = try SessionLifecycleRecovery(
             now: { fixedDate.addingTimeInterval(10) },
             atomicWriter: .production
         ).recover(in: root)
 
-        #expect(recovered.isEmpty)
+        #expect(report.recovered.isEmpty)
+        #expect(report.failures.map(\.kind) == [.unsupportedSchemaVersion(3)])
         #expect(try Data(contentsOf: manifestURL) == futureBytes)
     }
 
@@ -510,12 +516,13 @@ struct RecordingLifecycleTests {
             try session.stop()
         }
         assertTrackContract(try readManifest(in: session.dir))
-        let recovered = try SessionLifecycleRecovery(
+        let report = try SessionLifecycleRecovery(
             now: { fixedDate.addingTimeInterval(10) },
             atomicWriter: .production
         ).recover(in: root)
 
-        #expect(recovered.isEmpty)
+        #expect(report.recovered.isEmpty)
+        #expect(report.failures.isEmpty)
         #expect(try Data(contentsOf: manifestURL) == terminalBytes)
     }
 

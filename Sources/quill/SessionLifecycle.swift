@@ -253,6 +253,9 @@ struct SessionManifest: Codable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        guard schemaVersion == 2 else {
+            throw SessionManifestDecodingError.unsupportedSchemaVersion(schemaVersion)
+        }
         revision = try container.decode(Int.self, forKey: .revision)
         sessionID = try container.decode(UUID.self, forKey: .sessionID)
         captureProfile = try container.decode(CaptureProfile.self, forKey: .captureProfile)
@@ -294,6 +297,17 @@ struct SessionManifest: Codable, Equatable, Sendable {
         try container.encodeIfPresent(durationMs, forKey: .durationMs)
         try container.encode(timebase, forKey: .timebase)
         try container.encode(tracks, forKey: .tracks)
+    }
+}
+
+enum SessionManifestDecodingError: Error, Equatable, Sendable, CustomStringConvertible {
+    case unsupportedSchemaVersion(Int)
+
+    var description: String {
+        switch self {
+        case .unsupportedSchemaVersion(let version):
+            return "unsupported session manifest schema version \(version)"
+        }
     }
 }
 
@@ -375,26 +389,74 @@ struct AtomicFileWriter {
     }
 }
 
+struct SessionLifecycleRecoveryReport: Equatable, Sendable {
+    let recovered: [URL]
+    let failures: [SessionLifecycleRecoveryFailure]
+}
+
+struct SessionLifecycleRecoveryFailure: Equatable, Sendable {
+    enum Kind: Equatable, Sendable {
+        case inspectionFailed
+        case unreadableManifest
+        case unsupportedSchemaVersion(Int)
+        case persistenceFailed
+    }
+
+    let directory: URL
+    let kind: Kind
+    let context: FailureContext?
+}
+
 struct SessionLifecycleRecovery {
     let now: () -> Date
     let atomicWriter: AtomicFileWriter
 
-    func recover(in root: URL) throws -> [URL] {
+    func recover(in root: URL) throws -> SessionLifecycleRecoveryReport {
         let entries = try FileManager.default.contentsOfDirectory(
             at: root,
             includingPropertiesForKeys: [.isDirectoryKey],
             options: [.skipsHiddenFiles]
         )
         var recovered: [URL] = []
+        var failures: [SessionLifecycleRecoveryFailure] = []
 
         for directory in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-            let values = try directory.resourceValues(forKeys: [.isDirectoryKey])
+            let values: URLResourceValues
+            do {
+                values = try directory.resourceValues(forKeys: [.isDirectoryKey])
+            } catch {
+                failures.append(.init(
+                    directory: directory,
+                    kind: .inspectionFailed,
+                    context: FailureContext(error)
+                ))
+                continue
+            }
             guard values.isDirectory == true else { continue }
             let manifestURL = directory.appendingPathComponent("session.json")
             guard FileManager.default.fileExists(atPath: manifestURL.path) else { continue }
 
-            let data = try Data(contentsOf: manifestURL)
-            var manifest = try JSONDecoder.quill.decode(SessionManifest.self, from: data)
+            let data: Data
+            var manifest: SessionManifest
+            do {
+                data = try Data(contentsOf: manifestURL)
+                manifest = try JSONDecoder.quill.decode(SessionManifest.self, from: data)
+            } catch let error as SessionManifestDecodingError {
+                let kind: SessionLifecycleRecoveryFailure.Kind
+                switch error {
+                case .unsupportedSchemaVersion(let version):
+                    kind = .unsupportedSchemaVersion(version)
+                }
+                failures.append(.init(directory: directory, kind: kind, context: nil))
+                continue
+            } catch {
+                failures.append(.init(
+                    directory: directory,
+                    kind: .unreadableManifest,
+                    context: FailureContext(error)
+                ))
+                continue
+            }
             guard manifest.state == .starting || manifest.state == .recording else { continue }
 
             let recoveredAt = now()
@@ -415,10 +477,18 @@ struct SessionLifecycleRecovery {
                     )
                 }
             }
-            try atomicWriter.write(try JSONEncoder.quill.encode(manifest), to: manifestURL)
-            recovered.append(directory)
+            do {
+                try atomicWriter.write(try JSONEncoder.quill.encode(manifest), to: manifestURL)
+                recovered.append(directory)
+            } catch {
+                failures.append(.init(
+                    directory: directory,
+                    kind: .persistenceFailed,
+                    context: FailureContext(error)
+                ))
+            }
         }
-        return recovered
+        return SessionLifecycleRecoveryReport(recovered: recovered, failures: failures)
     }
 }
 
@@ -430,6 +500,44 @@ enum SessionTranscriptionEligibility {
         let manifestURL = directory.appendingPathComponent("session.json")
         guard FileManager.default.fileExists(atPath: manifestURL.path) else { return true }
         let data = try Data(contentsOf: manifestURL)
-        return try JSONDecoder.quill.decode(SessionManifest.self, from: data).state == .complete
+        let manifest = try JSONDecoder.quill.decode(SessionManifest.self, from: data)
+        switch manifest.state {
+        case .complete:
+            return true
+        case .interrupted:
+            return !survivingTracks(in: directory, manifest: manifest).isEmpty
+        case .starting, .recording, .failed:
+            return false
+        }
+    }
+
+    static func survivingTracks(
+        in directory: URL,
+        manifest: SessionManifest
+    ) -> [SessionTrack] {
+        manifest.tracks.filter { track in
+            guard track.captureStatus == .interrupted
+                    || track.captureStatus == .complete
+                    || track.captureStatus == .degraded,
+                  isSafeRelativePath(track.relativePath, within: directory)
+            else { return false }
+
+            let media = directory.appendingPathComponent(track.relativePath).standardizedFileURL
+            guard let values = try? media.resourceValues(
+                forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]
+            ) else { return false }
+            return values.isRegularFile == true
+                && values.isSymbolicLink != true
+                && (values.fileSize ?? 0) > 0
+        }
+    }
+
+    private static func isSafeRelativePath(_ relativePath: String, within directory: URL) -> Bool {
+        guard !relativePath.hasPrefix("/") else { return false }
+        let components = NSString(string: relativePath).pathComponents
+        guard !components.contains("..") else { return false }
+        let rootPath = directory.standardizedFileURL.path + "/"
+        let candidatePath = directory.appendingPathComponent(relativePath).standardizedFileURL.path
+        return candidatePath.hasPrefix(rootPath)
     }
 }

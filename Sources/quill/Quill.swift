@@ -102,7 +102,11 @@ final class AppController {
     private let root: URL
     private let menuBar = MenuBarController()
     private let transcription = TranscriptionCoordinator()
-    private var session: RecordingSession?
+    private var session: RecordingSessionSnapshot?
+    private var sessionController: RecordingSessionController?
+    private var startTask: Task<Void, Never>?
+    private var stopTask: Task<Void, Never>?
+    private var quitAfterCurrentOperation = false
     private var ticker: Timer?
 
     init(root: URL) {
@@ -113,13 +117,18 @@ final class AppController {
         menuBar.update(recording: false, elapsed: nil)
 
         do {
-            let recovered = try SessionLifecycleRecovery(
+            let report = try SessionLifecycleRecovery(
                 now: Date.init,
                 atomicWriter: .production
             ).recover(in: root)
-            if !recovered.isEmpty {
+            if !report.recovered.isEmpty {
                 FileHandle.standardError.write(Data(
-                    "recovered \(recovered.count) interrupted recording(s)\n".utf8
+                    "recovered \(report.recovered.count) interrupted recording(s)\n".utf8
+                ))
+            }
+            for failure in report.failures {
+                FileHandle.standardError.write(Data(
+                    "recording recovery skipped \(failure.directory.path): \(failure.kind)\n".utf8
                 ))
             }
         } catch {
@@ -144,11 +153,17 @@ final class AppController {
 
     /// Stop any live session cleanly (finalizing files) and exit.
     func shutdown() {
-        stopSession()
-        NSApp.terminate(nil)
+        if startTask != nil || stopTask != nil {
+            quitAfterCurrentOperation = true
+        } else if session != nil {
+            stopSession(terminateAfter: true)
+        } else {
+            NSApp.terminate(nil)
+        }
     }
 
     private func toggle() {
+        guard startTask == nil, stopTask == nil else { return }
         if session == nil {
             startSession()
         } else {
@@ -157,48 +172,72 @@ final class AppController {
     }
 
     private func startSession() {
-        do {
-            let newSession = try RecordingSession(root: root)
-            try newSession.start()
-            session = newSession
-            FileHandle.standardError.write(Data("● recording → \(newSession.dir.path)\n".utf8))
-        } catch {
-            FileHandle.standardError.write(Data("recording start failed: \(error)\n".utf8))
-            notifyUser(title: "quill — recording failed", body: "\(error)")
-            return
-        }
-
-        menuBar.update(recording: true, elapsed: "0:00")
-        ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tick() }
+        let controller = RecordingSessionController(root: root)
+        sessionController = controller
+        startTask = Task { [weak self] in
+            do {
+                let snapshot = try await controller.start()
+                guard let self else {
+                    _ = try? await controller.stop()
+                    return
+                }
+                self.startTask = nil
+                self.session = snapshot
+                FileHandle.standardError.write(Data(
+                    "● recording → \(snapshot.directory.path)\n".utf8
+                ))
+                self.menuBar.update(recording: true, elapsed: "0:00")
+                self.ticker = Timer.scheduledTimer(
+                    withTimeInterval: 1,
+                    repeats: true
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.tick() }
+                }
+                if self.quitAfterCurrentOperation {
+                    self.stopSession(terminateAfter: true)
+                }
+            } catch {
+                guard let self else { return }
+                self.startTask = nil
+                self.sessionController = nil
+                FileHandle.standardError.write(Data("recording start failed: \(error)\n".utf8))
+                notifyUser(title: "quill — recording failed", body: "\(error)")
+                if self.quitAfterCurrentOperation {
+                    NSApp.terminate(nil)
+                }
+            }
         }
     }
 
-    private func stopSession() {
-        guard let session else { return }
-        let elapsed = Self.format(Date().timeIntervalSince(session.startedAt))
-        let completed: Bool
-        do {
-            try session.stop()
-            completed = true
-            FileHandle.standardError.write(Data(
-                "○ stopped · \(elapsed) · \(session.dir.path)\n".utf8
-            ))
-        } catch {
-            completed = false
-            FileHandle.standardError.write(Data(
-                "recording finalization failed: \(error)\n".utf8
-            ))
-            notifyUser(title: "quill — recording finalization failed", body: "\(error)")
+    private func stopSession(terminateAfter: Bool = false) {
+        guard let session, let controller = sessionController else {
+            if terminateAfter { NSApp.terminate(nil) }
+            return
         }
+        let elapsed = Self.format(Date().timeIntervalSince(session.startedAt))
         self.session = nil
+        self.sessionController = nil
         ticker?.invalidate()
         ticker = nil
         menuBar.update(recording: false, elapsed: nil)
-
-        if completed {
-            let dir = session.dir
-            Task { [transcription] in await transcription.enqueue(dir) }
+        stopTask = Task { [weak self, transcription] in
+            do {
+                _ = try await controller.stop()
+                FileHandle.standardError.write(Data(
+                    "○ stopped · \(elapsed) · \(session.directory.path)\n".utf8
+                ))
+                await transcription.enqueue(session.directory)
+            } catch {
+                FileHandle.standardError.write(Data(
+                    "recording finalization failed: \(error)\n".utf8
+                ))
+                notifyUser(title: "quill — recording finalization failed", body: "\(error)")
+            }
+            let shouldTerminate = terminateAfter || self?.quitAfterCurrentOperation == true
+            self?.stopTask = nil
+            if shouldTerminate {
+                NSApp.terminate(nil)
+            }
         }
     }
 

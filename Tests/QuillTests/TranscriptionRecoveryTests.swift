@@ -43,7 +43,7 @@ struct TranscriptionRecoveryTests {
         #expect(!FileManager.default.fileExists(
             atPath: session.dir.appendingPathComponent("meta.json").path
         ))
-        #expect(report.recovered == [session.dir])
+        #expect(report.recovered.map(\.lastPathComponent) == [session.dir.lastPathComponent])
         #expect(try SessionTranscriptionEligibility.allowsTranscription(in: session.dir))
 
         let coordinator = TranscriptionCoordinator(
@@ -52,7 +52,9 @@ struct TranscriptionRecoveryTests {
         )
         await coordinator.resumePending(root: root)
 
-        #expect(await coordinator.queuedSessions() == [session.dir])
+        #expect(await coordinator.queuedSessions().map(\.lastPathComponent) == [
+            session.dir.lastPathComponent
+        ])
         let metadata = try SessionMeta.read(from: session.dir)
         #expect(metadata.tracks.map(\.file) == ["system.caf"])
         #expect(metadata.tracks.map(\.speaker) == ["them"])

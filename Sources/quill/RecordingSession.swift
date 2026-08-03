@@ -76,6 +76,55 @@ struct RecordingTrackDriver {
     let firstSampleAt: () -> Date?
 }
 
+private final class RecorderStartAttempt: @unchecked Sendable {
+    private let recorder: RecordingTrackDriver
+    private let destination: URL
+    private let completion = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var outcome: Result<Void, Error>?
+    private var expired = false
+
+    init(recorder: RecordingTrackDriver, destination: URL) {
+        self.recorder = recorder
+        self.destination = destination
+    }
+
+    func launch() {
+        Thread.detachNewThread { [self] in
+            let result = Result { try recorder.start(destination) }
+            lock.lock()
+            let shouldStopLateStart = expired && result.isSuccess
+            if !expired {
+                outcome = result
+            }
+            lock.unlock()
+
+            if shouldStopLateStart {
+                do { try recorder.stop() } catch { }
+            }
+            completion.signal()
+        }
+    }
+
+    func wait(timeout: TimeInterval) -> Result<Void, Error>? {
+        let waitResult = completion.wait(timeout: .now() + max(0, timeout))
+        lock.lock()
+        defer { lock.unlock() }
+        if let outcome { return outcome }
+        if waitResult == .timedOut {
+            expired = true
+        }
+        return nil
+    }
+}
+
+private extension Result where Success == Void, Failure == Error {
+    var isSuccess: Bool {
+        if case .success = self { return true }
+        return false
+    }
+}
+
 /// One meeting recording with a durable lifecycle authority. The selected root
 /// is preflighted before evidence exists, then a private directory and atomic
 /// `starting` manifest precede both recorder start calls.
@@ -88,6 +137,7 @@ final class RecordingSession {
         let metadataWriter: AtomicFileWriter
         let fileAttributes: (URL) throws -> [FileAttributeKey: Any]
         let recorders: [RecordingTrackDriver]
+        let monotonicNow: () -> TimeInterval
         let transitionTimeout: TimeInterval
         let pollInterval: TimeInterval
         let interruptAt: (RecordingLifecycleBoundary) -> Bool
@@ -102,6 +152,9 @@ final class RecordingSession {
                 try FileManager.default.attributesOfItem(atPath: $0.path)
             },
             recorders: [RecordingTrackDriver],
+            monotonicNow: @escaping () -> TimeInterval = {
+                ProcessInfo.processInfo.systemUptime
+            },
             transitionTimeout: TimeInterval = 0,
             pollInterval: TimeInterval = 0,
             interruptAt: @escaping (RecordingLifecycleBoundary) -> Bool = { _ in false }
@@ -114,6 +167,7 @@ final class RecordingSession {
                 metadataWriter: metadataWriter,
                 fileAttributes: fileAttributes,
                 recorders: recorders,
+                monotonicNow: monotonicNow,
                 transitionTimeout: transitionTimeout,
                 pollInterval: pollInterval,
                 interruptAt: interruptAt
@@ -154,6 +208,7 @@ final class RecordingSession {
                         firstSampleAt: { microphone.firstBufferAt }
                     ),
                 ],
+                monotonicNow: { ProcessInfo.processInfo.systemUptime },
                 transitionTimeout: 3,
                 pollInterval: 0.01,
                 interruptAt: { _ in false }
@@ -225,6 +280,7 @@ final class RecordingSession {
             throw RecordingSessionError.invalidTransition(from: manifest.state, operation: "start")
         }
 
+        var prepared: [(recorder: RecordingTrackDriver, destination: URL)] = []
         for recorder in dependencies.recorders {
             let destination = dir.appendingPathComponent(recorder.relativePath)
             do {
@@ -237,31 +293,47 @@ final class RecordingSession {
                 )
                 continue
             }
-
-            do {
-                try recorder.start(destination)
-                startedTrackIDs.insert(recorder.trackID)
-            } catch {
-                recordStartFailure(error, for: recorder)
-                continue
-            }
-
-            do {
-                try PrivateFileSystem.securePrivateFile(destination)
-            } catch {
-                do { try recorder.stop() } catch { }
-                startedTrackIDs.remove(recorder.trackID)
-                recordStartFailure(
-                    error,
-                    for: recorder,
-                    code: "track_destination_security_failed"
-                )
-                continue
-            }
-            try injectInterruption(at: .recorderStarted(trackID: recorder.trackID))
+            prepared.append((recorder, destination))
         }
 
-        waitForRecorderResolution()
+        let transitionDeadline = dependencies.monotonicNow()
+            + dependencies.transitionTimeout
+        if dependencies.transitionTimeout <= 0 {
+            for item in prepared {
+                try startSynchronously(item.recorder, destination: item.destination)
+            }
+        } else {
+            let attempts = prepared.map { item in
+                (
+                    recorder: item.recorder,
+                    destination: item.destination,
+                    attempt: RecorderStartAttempt(
+                        recorder: item.recorder,
+                        destination: item.destination
+                    )
+                )
+            }
+            attempts.forEach { $0.attempt.launch() }
+
+            for item in attempts {
+                let remaining = max(0, transitionDeadline - dependencies.monotonicNow())
+                guard let outcome = item.attempt.wait(timeout: remaining) else {
+                    recordStartTimeout(for: item.recorder)
+                    continue
+                }
+                switch outcome {
+                case .success:
+                    try finishSuccessfulStart(
+                        item.recorder,
+                        destination: item.destination
+                    )
+                case .failure(let error):
+                    recordStartFailure(error, for: item.recorder)
+                }
+            }
+        }
+
+        waitForRecorderResolution(deadline: transitionDeadline)
         resolveTrackLiveness()
         try injectInterruption(at: .recorderStartsResolved)
 
@@ -388,9 +460,40 @@ final class RecordingSession {
         try injectInterruption(at: .terminalPersisted)
     }
 
-    private func waitForRecorderResolution() {
-        let deadline = dependencies.now().addingTimeInterval(dependencies.transitionTimeout)
-        while dependencies.now() < deadline {
+    private func startSynchronously(
+        _ recorder: RecordingTrackDriver,
+        destination: URL
+    ) throws {
+        do {
+            try recorder.start(destination)
+        } catch {
+            recordStartFailure(error, for: recorder)
+            return
+        }
+        try finishSuccessfulStart(recorder, destination: destination)
+    }
+
+    private func finishSuccessfulStart(
+        _ recorder: RecordingTrackDriver,
+        destination: URL
+    ) throws {
+        do {
+            try PrivateFileSystem.securePrivateFile(destination)
+        } catch {
+            do { try recorder.stop() } catch { }
+            recordStartFailure(
+                error,
+                for: recorder,
+                code: "track_destination_security_failed"
+            )
+            return
+        }
+        startedTrackIDs.insert(recorder.trackID)
+        try injectInterruption(at: .recorderStarted(trackID: recorder.trackID))
+    }
+
+    private func waitForRecorderResolution(deadline: TimeInterval) {
+        while dependencies.monotonicNow() < deadline {
             let allResolved = dependencies.recorders.allSatisfy { recorder in
                 manifest.tracks.first(where: { $0.trackID == recorder.trackID })?.failure != nil
                     || recorder.firstSampleAt() != nil
@@ -398,6 +501,19 @@ final class RecordingSession {
             if allResolved { return }
             Thread.sleep(forTimeInterval: dependencies.pollInterval)
         }
+    }
+
+    private func recordStartTimeout(for recorder: RecordingTrackDriver) {
+        guard let index = manifest.tracks.firstIndex(where: { $0.trackID == recorder.trackID }) else {
+            return
+        }
+        manifest.tracks[index].captureStatus = .missing
+        manifest.tracks[index].failure = SessionTrackFailure(
+            code: "start_timeout",
+            message: "Recorder start did not return before the transition deadline.",
+            observedAt: dependencies.now(),
+            recoveryAttempted: false
+        )
     }
 
     private func resolveTrackLiveness() {
@@ -551,5 +667,51 @@ private enum RecordingEvidenceValidationError: Error, CustomStringConvertible {
         case .missingByteCount(let url):
             return "recorded evidence has no byte count: \(url.path)"
         }
+    }
+}
+
+struct RecordingSessionSnapshot: Equatable, Sendable {
+    let directory: URL
+    let startedAt: Date
+}
+
+/// Owns the non-Sendable recorder graph on a dedicated actor so synchronous
+/// permission prompts and liveness waits never block AppKit's main actor.
+actor RecordingSessionController {
+    private let root: URL
+    private let dependencies: RecordingSession.Dependencies?
+    private var session: RecordingSession?
+
+    init(
+        root: URL,
+        dependencies: RecordingSession.Dependencies? = nil
+    ) {
+        self.root = root
+        self.dependencies = dependencies
+    }
+
+    func start() throws -> RecordingSessionSnapshot {
+        let newSession: RecordingSession
+        if let dependencies {
+            newSession = try RecordingSession(root: root, dependencies: dependencies)
+        } else {
+            newSession = try RecordingSession(root: root)
+        }
+        try newSession.start()
+        session = newSession
+        return RecordingSessionSnapshot(
+            directory: newSession.dir,
+            startedAt: newSession.startedAt
+        )
+    }
+
+    func stop() throws -> RecordingSessionSnapshot? {
+        guard let session else { return nil }
+        try session.stop()
+        self.session = nil
+        return RecordingSessionSnapshot(
+            directory: session.dir,
+            startedAt: session.startedAt
+        )
     }
 }

@@ -19,6 +19,16 @@ actor TranscriptionCoordinator {
     private var engine: TranscriptionEngine?
     private var lastFailure: String?
     private var statusHandler: (@Sendable (Status) -> Void)?
+    private let transcriptionEnabled: @Sendable () -> Bool
+    private let automaticallyDrains: Bool
+
+    init(
+        transcriptionEnabled: @escaping @Sendable () -> Bool = Config.transcriptionEnabled,
+        automaticallyDrains: Bool = true
+    ) {
+        self.transcriptionEnabled = transcriptionEnabled
+        self.automaticallyDrains = automaticallyDrains
+    }
 
     func setStatusHandler(_ handler: @escaping @Sendable (Status) -> Void) {
         statusHandler = handler
@@ -26,7 +36,7 @@ actor TranscriptionCoordinator {
 
     /// Queue a finished session when automatic transcription is enabled.
     func enqueue(_ sessionDir: URL) {
-        guard Config.transcriptionEnabled() else { return }
+        guard transcriptionEnabled() else { return }
         queue.append(sessionDir)
         drainIfIdle()
     }
@@ -35,7 +45,7 @@ actor TranscriptionCoordinator {
     /// but were never transcribed. Folder names sort chronologically, so
     /// oldest-first is a name sort.
     func resumePending(root: URL) {
-        guard Config.transcriptionEnabled() else { return }
+        guard transcriptionEnabled() else { return }
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: root, includingPropertiesForKeys: nil
         ) else { return }
@@ -43,9 +53,18 @@ actor TranscriptionCoordinator {
         let fm = FileManager.default
         let pending = entries
             .filter { directory in
-                guard fm.fileExists(atPath: directory.appendingPathComponent("meta.json").path),
-                      !fm.fileExists(atPath: directory.appendingPathComponent("transcript.json").path)
-                else { return false }
+                guard !fm.fileExists(
+                    atPath: directory.appendingPathComponent("transcript.json").path
+                ) else { return false }
+
+                let manifestExists = fm.fileExists(
+                    atPath: directory.appendingPathComponent("session.json").path
+                )
+                if !manifestExists {
+                    return fm.fileExists(
+                        atPath: directory.appendingPathComponent("meta.json").path
+                    )
+                }
                 do {
                     return try SessionTranscriptionEligibility.allowsTranscription(in: directory)
                 } catch {
@@ -65,9 +84,14 @@ actor TranscriptionCoordinator {
         drainIfIdle()
     }
 
+    func queuedSessions() -> [URL] {
+        queue
+    }
+
     // MARK: -
 
     private func drainIfIdle() {
+        guard automaticallyDrains else { return }
         guard !draining, !queue.isEmpty else { return }
         draining = true
         lastFailure = nil
@@ -197,12 +221,45 @@ struct SessionMeta {
 
     static func read(from dir: URL) throws -> SessionMeta {
         let url = dir.appendingPathComponent("meta.json")
-        guard
-            let data = try? Data(contentsOf: url),
-            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let files = json["files"] as? [String: String]
+        if let data = try? Data(contentsOf: url),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let files = json["files"] as? [String: String]
+        {
+            return legacyMetadata(files: files, json: json)
+        }
+
+        let manifestURL = dir.appendingPathComponent("session.json")
+        guard let data = try? Data(contentsOf: manifestURL),
+              let manifest = try? JSONDecoder.quill.decode(SessionManifest.self, from: data)
         else { throw MetaError.unreadable(url) }
 
+        let tracks = SessionTranscriptionEligibility.survivingTracks(
+            in: dir,
+            manifest: manifest
+        ).compactMap { track -> Track? in
+            switch track.role {
+            case .microphone:
+                return Track(
+                    file: track.relativePath,
+                    speaker: "me",
+                    offsetMs: track.startOffsetMs ?? 0
+                )
+            case .system:
+                return Track(
+                    file: track.relativePath,
+                    speaker: "them",
+                    offsetMs: track.startOffsetMs ?? 0
+                )
+            }
+        }
+        guard !tracks.isEmpty else { throw MetaError.unreadable(manifestURL) }
+        return SessionMeta(tracks: tracks)
+    }
+
+    private static func legacyMetadata(
+        files: [String: String],
+        json: [String: Any]
+    ) -> SessionMeta {
         // Sessions recorded before offsets were captured default to 0 —
         // tracks start within tens of milliseconds of each other anyway.
         let offsets = json["start_offset_ms"] as? [String: Int] ?? [:]
