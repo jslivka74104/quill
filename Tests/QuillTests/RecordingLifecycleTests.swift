@@ -203,6 +203,36 @@ struct RecordingLifecycleTests {
         #expect(manifest.tracks.map { $0.failure?.code } == ["start_timeout"])
     }
 
+    @MainActor @Test func recordingControllerKeepsMainActorResponsiveDuringStart() async throws {
+        let root = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let recorder = RecordingTrackDriver.fixtureSystem(
+            firstSampleAt: { fixedDate },
+            start: { _ in Thread.sleep(forTimeInterval: 0.08) }
+        )
+        let controller = RecordingSessionController(
+            root: root,
+            dependencies: .testing(
+                now: Date.init,
+                preflight: .fixturePassing,
+                recorders: [recorder],
+                transitionTimeout: 0.2,
+                pollInterval: 0.001
+            )
+        )
+
+        let started = ProcessInfo.processInfo.systemUptime
+        let startTask = Task { try await controller.start() }
+        try await Task.sleep(for: .milliseconds(10))
+        let heartbeatElapsed = ProcessInfo.processInfo.systemUptime - started
+
+        #expect(heartbeatElapsed < 0.05)
+        let snapshot = try await startTask.value
+        #expect(snapshot.directory.deletingLastPathComponent() == root)
+        _ = try await controller.stop()
+    }
+
     @Test func corruptOldestManifestDoesNotBlockNewerRecovery() throws {
         let root = try makeTemporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
