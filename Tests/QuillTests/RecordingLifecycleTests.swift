@@ -128,7 +128,12 @@ struct RecordingLifecycleTests {
         defer { try? FileManager.default.removeItem(at: root) }
 
         let recorders = [
-            RecordingTrackDriver.fixtureSystem(firstSampleAt: { fixedDate }),
+            RecordingTrackDriver.fixtureSystem(
+                firstSampleAt: { fixedDate },
+                start: { destination in
+                    try Data("surviving-system-evidence".utf8).write(to: destination)
+                }
+            ),
             RecordingTrackDriver.fixtureMicrophone(
                 firstSampleAt: { nil },
                 start: { _ in throw FixtureFailure.microphoneStart }
@@ -160,7 +165,101 @@ struct RecordingLifecycleTests {
             .compactMap(\.failure) == preservedTrackFailures)
         #expect(manifest.tracks.filter { $0.captureStatus == .interrupted }
             .allSatisfy { $0.failure?.code == "process_terminated_unexpectedly" })
-        #expect(try !SessionTranscriptionEligibility.allowsTranscription(in: session.dir))
+        #expect(
+            try SessionTranscriptionEligibility.allowsTranscription(in: session.dir)
+                == (initialState == .recording)
+        )
+    }
+
+    @Test func transitionDeadlineBoundsARecorderStartCallAndAuthorsTimeout() throws {
+        let root = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let recorder = RecordingTrackDriver.fixtureSystem(
+            firstSampleAt: { nil },
+            start: { _ in Thread.sleep(forTimeInterval: 0.08) }
+        )
+        let session = try RecordingSession(
+            root: root,
+            dependencies: .testing(
+                now: Date.init,
+                preflight: .fixturePassing,
+                recorders: [recorder],
+                transitionTimeout: 0.02,
+                pollInterval: 0.001
+            )
+        )
+
+        let started = ProcessInfo.processInfo.systemUptime
+        _ = try #require(throws: RecordingSessionError.self) {
+            try session.start()
+        }
+        let elapsed = ProcessInfo.processInfo.systemUptime - started
+
+        #expect(elapsed < 0.06)
+        let manifest = try readManifest(in: session.dir)
+        #expect(manifest.state == .failed)
+        assertTrackContract(manifest)
+        #expect(manifest.tracks.map { $0.failure?.code } == ["start_timeout"])
+    }
+
+    @Test func corruptOldestManifestDoesNotBlockNewerRecovery() throws {
+        let root = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let corrupt = root.appendingPathComponent("0000-corrupt", isDirectory: true)
+        try PrivateFileSystem.createDirectory(corrupt)
+        try AtomicFileWriter.production.write(
+            Data("not-json".utf8),
+            to: corrupt.appendingPathComponent("session.json")
+        )
+        let valid = try RecordingSession(
+            root: root,
+            dependencies: dependencies(
+                recorders: [RecordingTrackDriver.fixtureSystem(firstSampleAt: { fixedDate })]
+            )
+        )
+
+        let recovered = try SessionLifecycleRecovery(
+            now: { fixedDate.addingTimeInterval(10) },
+            atomicWriter: .production
+        ).recover(in: root)
+
+        #expect(recovered.map(\.lastPathComponent) == [valid.dir.lastPathComponent])
+        let manifest = try readManifest(in: valid.dir)
+        #expect(manifest.state == .interrupted)
+        assertTrackContract(manifest)
+    }
+
+    @Test func futureManifestRemainsByteImmutableDuringRecovery() throws {
+        let root = try makeTemporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let session = try RecordingSession(
+            root: root,
+            dependencies: dependencies(
+                recorders: [RecordingTrackDriver.fixtureSystem(firstSampleAt: { fixedDate })]
+            )
+        )
+        let manifestURL = session.dir.appendingPathComponent("session.json")
+        var json = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: manifestURL)) as? [String: Any]
+        )
+        json["schema_version"] = 3
+        json["future_evidence_authority"] = ["preserve": true]
+        let futureBytes = try JSONSerialization.data(
+            withJSONObject: json,
+            options: [.prettyPrinted, .sortedKeys]
+        )
+        try AtomicFileWriter.production.write(futureBytes, to: manifestURL)
+
+        let recovered = try SessionLifecycleRecovery(
+            now: { fixedDate.addingTimeInterval(10) },
+            atomicWriter: .production
+        ).recover(in: root)
+
+        #expect(recovered.isEmpty)
+        #expect(try Data(contentsOf: manifestURL) == futureBytes)
     }
 
     @Test func cleanCapturePromotesOnFirstSampleThenCompletesAfterFinalization() throws {
