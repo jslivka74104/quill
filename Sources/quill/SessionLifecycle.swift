@@ -397,15 +397,22 @@ struct SessionLifecycleRecovery {
             var manifest = try JSONDecoder.quill.decode(SessionManifest.self, from: data)
             guard manifest.state == .starting || manifest.state == .recording else { continue }
 
+            let recoveredAt = now()
             manifest.revision += 1
             manifest.state = .interrupted
             manifest.failure = nil
-            manifest.endedAt = now()
+            manifest.endedAt = recoveredAt
             for index in manifest.tracks.indices {
                 if manifest.tracks[index].captureStatus == .pending
                     || manifest.tracks[index].captureStatus == .recording
                 {
                     manifest.tracks[index].captureStatus = .interrupted
+                    manifest.tracks[index].failure = SessionTrackFailure(
+                        code: "process_terminated_unexpectedly",
+                        message: "The recording process ended before the track reached a terminal state.",
+                        observedAt: recoveredAt,
+                        recoveryAttempted: false
+                    )
                 }
             }
             try atomicWriter.write(try JSONEncoder.quill.encode(manifest), to: manifestURL)

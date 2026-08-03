@@ -86,6 +86,7 @@ final class RecordingSession {
         let preflight: RecordingRootPreflight
         let atomicWriter: AtomicFileWriter
         let metadataWriter: AtomicFileWriter
+        let fileAttributes: (URL) throws -> [FileAttributeKey: Any]
         let recorders: [RecordingTrackDriver]
         let transitionTimeout: TimeInterval
         let pollInterval: TimeInterval
@@ -97,6 +98,9 @@ final class RecordingSession {
             preflight: RecordingRootPreflight,
             atomicWriter: AtomicFileWriter = .production,
             metadataWriter: AtomicFileWriter = .production,
+            fileAttributes: @escaping (URL) throws -> [FileAttributeKey: Any] = {
+                try FileManager.default.attributesOfItem(atPath: $0.path)
+            },
             recorders: [RecordingTrackDriver],
             transitionTimeout: TimeInterval = 0,
             pollInterval: TimeInterval = 0,
@@ -108,6 +112,7 @@ final class RecordingSession {
                 preflight: preflight,
                 atomicWriter: atomicWriter,
                 metadataWriter: metadataWriter,
+                fileAttributes: fileAttributes,
                 recorders: recorders,
                 transitionTimeout: transitionTimeout,
                 pollInterval: pollInterval,
@@ -124,6 +129,9 @@ final class RecordingSession {
                 preflight: .production(),
                 atomicWriter: .production,
                 metadataWriter: .production,
+                fileAttributes: {
+                    try FileManager.default.attributesOfItem(atPath: $0.path)
+                },
                 recorders: [
                     RecordingTrackDriver(
                         trackID: "system",
@@ -303,7 +311,7 @@ final class RecordingSession {
             recording.tracks[index].captureStatus = .recording
             recording.tracks[index].startOffsetMs = max(
                 0,
-                Int(sample.timeIntervalSince(earliestSample) * 1_000)
+                Int((sample.timeIntervalSince(earliestSample) * 1_000).rounded())
             )
         }
         do {
@@ -358,21 +366,14 @@ final class RecordingSession {
             complete.durationMs = max(0, Int(endedAt.timeIntervalSince(captureStart) * 1_000))
         }
         for index in complete.tracks.indices where complete.tracks[index].captureStatus == .recording {
-            complete.tracks[index].captureStatus = .complete
-            let media = dir.appendingPathComponent(complete.tracks[index].relativePath)
-            if FileManager.default.fileExists(atPath: media.path) {
-                do {
-                    let attributes = try FileManager.default.attributesOfItem(atPath: media.path)
-                    if let size = attributes[.size] as? NSNumber {
-                        complete.tracks[index].byteCount = size.intValue
-                    }
-                } catch {
-                    try persistObservedFinalizationFailure(error)
-                    throw RecordingSessionError.operationFailed(
-                        .finalization,
-                        FailureContext(error)
-                    )
-                }
+            do {
+                try completeTrack(&complete.tracks[index])
+            } catch {
+                try persistObservedFinalizationFailure(error)
+                throw RecordingSessionError.operationFailed(
+                    .finalization,
+                    FailureContext(error)
+                )
             }
         }
         do {
@@ -449,6 +450,22 @@ final class RecordingSession {
             observedAt: observedAt
         )
         failed.endedAt = observedAt
+        for index in failed.tracks.indices
+        where failed.tracks[index].captureStatus == .pending
+            || failed.tracks[index].captureStatus == .recording
+        {
+            do {
+                try completeTrack(&failed.tracks[index])
+            } catch {
+                failed.tracks[index].captureStatus = .invalid
+                failed.tracks[index].failure = SessionTrackFailure(
+                    code: "track_evidence_validation_failed",
+                    message: String(describing: error),
+                    observedAt: observedAt,
+                    recoveryAttempted: false
+                )
+            }
+        }
         do {
             try persist(failed)
             manifest = failed
@@ -458,6 +475,17 @@ final class RecordingSession {
                 FailureContext(error)
             )
         }
+    }
+
+    private func completeTrack(_ track: inout SessionTrack) throws {
+        let media = dir.appendingPathComponent(track.relativePath)
+        let attributes = try dependencies.fileAttributes(media)
+        guard let size = attributes[.size] as? NSNumber else {
+            throw RecordingEvidenceValidationError.missingByteCount(media)
+        }
+        track.captureStatus = .complete
+        track.failure = nil
+        track.byteCount = size.intValue
     }
 
     private func stopStartedRecordersIgnoringSecondaryFailures() {
@@ -512,5 +540,16 @@ final class RecordingSession {
             suffix += 1
         }
         return candidate
+    }
+}
+
+private enum RecordingEvidenceValidationError: Error, CustomStringConvertible {
+    case missingByteCount(URL)
+
+    var description: String {
+        switch self {
+        case .missingByteCount(let url):
+            return "recorded evidence has no byte count: \(url.path)"
+        }
     }
 }
